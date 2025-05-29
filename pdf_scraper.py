@@ -457,6 +457,7 @@ def _combine_categorize_pdfs() -> None:
                                 pdf_dict[url_key]["page_number"] = page_offset
                         finally:
                             chunk.close()
+                            _update_categories_file(current_category)
                     except Exception as e:
                         logger.error(f"Error processing {pdf_path.name}: {str(e)}")
                 
@@ -625,6 +626,31 @@ def _load_urls() -> dict:
             return json.load(f)
     except FileNotFoundError:
         return {}
+
+
+
+def _update_categories_file(updated_category: str) -> None:
+    """Checks if the categories have been updated and if so lists which categories have been updated in a file.
+    
+    Args:
+        updated_category (str): The category that has been updated
+        
+    Raises:
+        OSError: If there is an error writing to the categories file
+    """
+    categories_file = SCRIPT_DIR / config["files"]["updated_categories"]
+    
+    try:
+        # Write the updated category to the file
+        # Using 'w' mode automatically clears the file
+        with open(categories_file, "w", encoding="utf-8") as f:
+            f.write(f"{updated_category} - updated\n")
+            
+        logger.info(f"Updated categories file with category: {updated_category}")
+            
+    except OSError as e:
+        logger.error(f"Error writing to categories file: {e}")
+        raise  # Re-raise the OSError with its original traceback
 
 
 def run_script():

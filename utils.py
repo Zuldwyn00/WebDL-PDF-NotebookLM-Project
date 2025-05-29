@@ -197,3 +197,4 @@ def get_highest_index(paths: List[Path], prefix: str) -> int:
         if m:
             indices.append(int(m.group(1)))
     return max(indices) if indices else 0 
+
