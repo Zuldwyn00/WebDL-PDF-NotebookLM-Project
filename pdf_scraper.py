@@ -562,7 +562,7 @@ def remove_pdf(pdf_key:str) -> None:
             start_page = data["page_number"] + 1
             keys_iter = dropwhile(lambda x: x[0] != pdf_key, pdf_dict.items())
             next(keys_iter)
-            end_page = next(keys_iter)[1]["page_number"] + 1
+            end_page = next(keys_iter)[1]["page_number"]
             
             try:
                 master_doc = pymupdf.open(str(data["master_pdf"]))
@@ -698,7 +698,7 @@ def run_script():
 
 
 def main():  
-    #run_script()  
+    run_script()  
 
 
 if __name__ == "__main__":
