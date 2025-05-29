@@ -43,6 +43,7 @@ logs/
 urls.json
 chromedriver
 chromedriver.exe
+updated_categories.txt
 
 # Logs
 *.log

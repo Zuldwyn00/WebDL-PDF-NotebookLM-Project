@@ -43,6 +43,10 @@ class ScraperExceptions:
         """Raised when page update fails"""
         pass
 
+    class PageDeleteError(ProcessingError):
+        """Raised when page deletion fails"""
+        pass
+
 
 class TranscriptionExceptions:
     """Collection of custom exceptions for the Transcription."""
