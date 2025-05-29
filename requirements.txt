@@ -1,0 +1,13 @@
+selenium==4.32.0
+webdriver-manager==4.0.2
+tqdm==4.67.1
+PyMuPDF==1.25.5
+ocrmypdf==16.10.1
+pytesseract==0.3.13 
+requests==2.31.0
+ffmpeg-python==0.2.0
+moviepy==1.0.3
+git+https://github.com/openai/whisper.git
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-mock==3.12.0

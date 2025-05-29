@@ -1,0 +1,39 @@
+# PDF Scraper Configuration
+
+# Website Configuration
+website:
+  url: "https://smartadvocate.na4.teamsupport.com/knowledgeBase"
+
+# Directory Configuration
+directories:
+  base: "PDFs"  # Relative to script directory
+  master: "master"  # Relative to base directory
+  transcript_master: "transcript_master"  # Relative to base directory
+  
+# File Configuration
+files:
+  urls: "urls.json"  # Relative to script directory
+  sensitive: "sensitive_config.yaml"  # File containing sensitive information
+
+# PDF Configuration
+pdf:
+  max_master_size_mb: 175  # Maximum size of master PDF files in MB
+  minimum_ocr_pages: 2  # Minimum number of pages to OCR
+
+# Transcript Configuration
+transcript:
+  chunk_duration_minutes: 10  # Duration of audio chunks for transcription
+  model: "base"  # Whisper model to use for transcription
+
+# Browser Configuration
+browser:
+  timeout: 20  # Timeout in seconds for browser operations
+  headless: true
+  download_prompt: false 
+
+# Logger Configuration
+logger:
+  level: "DEBUG"  # Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  format: "%(asctime)s - %(levelname)s - %(message)s"  # Log message format
+  datefmt: "%Y-%m-%d %H:%M:%S"  # Date format for log messages
+  filename: "pdf_scraper.log"  # Log file name
