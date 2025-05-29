@@ -54,3 +54,6 @@ temp_*
 
 # Sensitive Information
 sensitive_config.yaml 
+
+# Other
+GITHUB_SETUP_GUIDE.md

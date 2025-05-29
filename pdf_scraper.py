@@ -568,7 +568,7 @@ def _normalize_url(raw_url:str) -> str:
             - No trailing slash
             - No query parameters or fragments
     """
-    #components of url, urlparse seperates into the 6 fields
+    #components of url, urlparse seperates into 6 fields
     parts = urlparse(raw_url, scheme="http")
     scheme = parts.scheme.lower()
     netloc = parts.netloc.lower()
