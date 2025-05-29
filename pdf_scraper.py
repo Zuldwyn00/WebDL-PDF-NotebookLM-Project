@@ -556,14 +556,18 @@ def apply_ocr(doc: pymupdf.Document) -> pymupdf.Document:
 def remove_pdf(pdf_key:str) -> None:
     """Removes a PDF from the master_file it is found in, and updates the URL data to PEND status"""
     pdf_dict = _load_urls()
+
     if pdf_key in pdf_dict:
         data = pdf_dict[pdf_key]
         if data.get("master_pdf"):
             start_page = data["page_number"] + 1
+            
             keys_iter = dropwhile(lambda x: x[0] != pdf_key, pdf_dict.items())
             next(keys_iter)
             end_page = next(keys_iter)[1]["page_number"]
-            
+
+            logger.debug(f"Starting page {start_page} -- ending page {end_page}")
+
             try:
                 master_doc = pymupdf.open(str(data["master_pdf"]))
                 master_doc.delete_pages(start_page, end_page)

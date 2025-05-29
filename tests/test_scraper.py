@@ -174,7 +174,6 @@ class TestOCR:
         return
 
 
-
 class TestRemovePDF:
     """Test cases for the remove_pdf function.
     
