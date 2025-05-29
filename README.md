@@ -84,7 +84,7 @@ The script will:
 5. Combine content into master documents by category
 6. Generate detailed logs of the process
 
-## Configuration
+## Config
 
 The application is configured through YAML files:
 
