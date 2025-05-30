@@ -1,23 +1,37 @@
 # PDF and Video Content Scraper
 
-A Python-based tool for scraping, processing, and organizing PDFs and video content from web sources. This tool is specifically designed to work with SmartAdvocate's knowledge base. It is meant to be used with Google's NotebookLM in order to summarize, find, and organize the information from the SmartAdvocate knowledge base.
+A Python-based tool for scraping, processing, and organizing PDFs and video content from web sources. This tool is specifically designed to work with SmartAdvocate's knowledge base and integrates with Google's NotebookLM for summarizing, finding, and organizing information from the SmartAdvocate knowledge base.
 
 ## Features
 
-- 🔄 **Automated Content Scraping**: Automatically scrapes PDFs and videos from specified web pages
-- 📑 **Smart Organization**: Categorizes content based on their source categories
-- 🔍 **OCR Processing**: Automatically applies OCR to PDFs with images
-- 📚 **Master Document Creation**: Combines related PDFs and video transcripts into master documents
-- 📊 **Size Management**: Automatically splits master documents when they exceed size limits
-- 🎥 **Video Transcription**: Automatically transcribes video content using OpenAI's Whisper
-- 📝 **Detailed Logging**: Comprehensive logging of all operations with custom handlers
-- 📈 **Progress Tracking**: Visual progress bars for long-running operations
-- ⚙️ **Configurable**: Easy configuration through YAML files
+- Automated Content Scraping: Automatically scrapes PDFs and videos from specified web pages
+- Smart Organization: Categorizes content based on their source categories
+- OCR Processing: Automatically applies OCR to PDFs with images
+- Master Document Creation: Combines related PDFs and video transcripts into master documents
+- Size Management: Automatically splits master documents when they exceed size limits
+- Video Transcription: Automatically transcribes video content using OpenAI's Whisper
+- Detailed Logging: Comprehensive logging of all operations with custom handlers
+- Progress Tracking: Visual progress bars for long-running operations
+- Configurable: Easy configuration through YAML files
+
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Project Structure](#project-structure)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Logging](#logging)
+- [Error Handling](#error-handling)
+- [Contributing](#contributing)
+- [License](#license)
+- [Contact](#contact)
+- [Version](#version)
 
 ## Prerequisites
 
 - Python 3.7+
-- Chrome browser installed
+- Chrome browser
 - Internet connection
 - FFmpeg (for video processing)
 - Tesseract OCR (for PDF processing)
@@ -26,8 +40,8 @@ A Python-based tool for scraping, processing, and organizing PDFs and video cont
 
 1. Clone this repository:
 ```bash
-#git clone [repository-url] 
-#cd [repository-name]
+git clone https://github.com/Zuldwyn00/NoteBookLM_Project
+cd NoteBookLM_Project
 ```
 
 2. Install required Python packages:
@@ -36,14 +50,14 @@ pip install -r requirements.txt
 ```
 
 3. Install FFmpeg:
-- Windows: Download from [FFmpeg website](https://ffmpeg.org/download.html)
-- Linux: `sudo apt-get install ffmpeg`
-- macOS: `brew install ffmpeg`
+   - Windows: Download from [FFmpeg website](https://ffmpeg.org/download.html)
+   - Linux: `sudo apt-get install ffmpeg`
+   - macOS: `brew install ffmpeg`
 
 4. Install Tesseract OCR:
-- Windows: Download and install from [Tesseract GitHub](https://github.com/UB-Mannheim/tesseract/wiki)
-- Linux: `sudo apt-get install tesseract-ocr`
-- macOS: `brew install tesseract`
+   - Windows: Download and install from [Tesseract GitHub](https://github.com/UB-Mannheim/tesseract/wiki)
+   - Linux: `sudo apt-get install tesseract-ocr`
+   - macOS: `brew install tesseract`
 
 ## Project Structure
 
@@ -76,41 +90,41 @@ PDFScraper/
 python pdf_scraper.py
 ```
 
-The script will:
-1. Scrape all available content from the configured website using Selenium
-2. Download and process each PDF and check if page contains videos
-3. Apply OCR to PDFs where necessary
-4. Transcribe video content using Whisper
-5. Combine content into master documents by category
-6. Generate detailed logs of the process
+The script performs the following operations:
+1. Scrapes all available content from the configured website using Selenium
+2. Downloads and processes each PDF and checks if pages contain videos
+3. Applies OCR to PDFs where necessary
+4. Transcribes video content using Whisper
+5. Combines content into master documents by category
+6. Generates detailed logs of the process
 
-## Config
+## Configuration
 
-The application is configured through YAML files:
+The application uses two YAML configuration files:
 
-- `config/config.yaml`: Main configuration file containing:
-  - Website settings
-  - Directory paths
-  - PDF size limits
-  - Transcription settings
-  - Logging configuration
+### Main Configuration (`config/config.yaml`)
+- Website settings
+- Directory paths
+- PDF size limits
+- Transcription settings
+- Logging configuration
 
-- `config/sensitive_config.yaml`: Sensitive configuration containing:
-  - User agent information
-  - Contact details
-  - Other sensitive settings
+### Sensitive Configuration (`config/sensitive_config.yaml`)
+- User agent information
+- Contact details
+- Other sensitive settings
 
 ## Logging
 
-Logs are stored in the `logs` directory with timestamps. Each run creates a new log file with detailed information about the scraping process. The logging system includes:
-- Custom handlers for progress bar integration
+The application maintains detailed logs in the `logs` directory. Each run creates a new timestamped log file containing:
+- Operation details and timing
+- Error tracking and debugging information
+- Progress updates
 - File and console output
-- Detailed error tracking
-- Operation timing information
 
 ## Error Handling
 
-The application includes comprehensive error handling with custom exceptions for:
+The application implements comprehensive error handling for:
 - Download failures
 - PDF processing errors
 - OCR failures
@@ -120,17 +134,18 @@ The application includes comprehensive error handling with custom exceptions for
 
 ## Contributing
 
-Contributions are not needed, thank you!
+This is a private project and is not accepting contributions at this time.
 
 ## License
 
-[Add your license information here]
+[License information pending]
 
-## Author
+## Contact
 
-Zuldwyn00 <zuldwyn@gmail.com>
+Author: Zuldwyn00  
+Email: zuldwyn@gmail.com
 
 ## Version
 
-Current version: 2.0
-Last updated: 2025-05-23 
+Version: 2.1.0
+Last updated: 2025-05-30
