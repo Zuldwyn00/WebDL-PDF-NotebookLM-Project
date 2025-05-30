@@ -560,7 +560,9 @@ def remove_pdf(pdf_key:str, delete_from_json:bool = False, blacklist_this_pdfkey
     pdf_dict = _load_urls()
 
     if pdf_key not in pdf_dict:
-        raise ScraperExceptions.PDFNotFoundError
+        raise KeyError(f"PDF key '{pdf_key}' not found in URL database")
+    if not pdf_dict[pdf_key].get("master_pdf"):
+        raise ScraperExceptions.PDFNotFoundError(f"No master PDF associated with key '{pdf_key}'")
     
     data = pdf_dict[pdf_key]
     if data.get("master_pdf"):

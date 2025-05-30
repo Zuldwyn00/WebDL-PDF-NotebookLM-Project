@@ -51,7 +51,6 @@ class ScraperExceptions:
         """Raised when a PDF key is not found in the dictionary or has no associated master PDF"""
         pass
 
-
 class TranscriptionExceptions:
     """Collection of custom exceptions for the Transcription."""
     

@@ -211,7 +211,7 @@ class TestRemovePDF:
         
         Given: A PDF that is key that is at the end of the master_file, known to have no pdf after it so that the page range goes out of bounds
         When: remove_pdf is called with the key of the PDF
-        Then: The PDF should be deleted from the master_file and should not raise an error if the page range goes out of bounds
+        Then: The PDF should be deleted from the master_file and should handle the page not having a next pdf
         
         Run with: python -m pytest tests/test_scraper.py::TestRemovePDF::test_delete_last_pdf_in_dict -v
         """
@@ -231,9 +231,6 @@ class TestRemovePDF:
 
         assert actual_total_master_pages == expected_total_master_pages
 
-
-    def test_delete_first_pdf_in_master_file(self):
-        pass
 
     def test_delete_pdf_where_next_dict_item_is_from_different_master_file(self):
         """Test the remove_pdf function where the next dict item is from a different master_file
@@ -262,7 +259,31 @@ class TestRemovePDF:
 
         
     def test_delete_pdf_where_pdfkey_is_not_in_dictionary(self):
-        pass
+        """Test the remove_pdf function where the given pdf_key is not in the dictionary
+
+        Given: A pdf_key that is not in the dictionary
+        When: remove_pdf is called with the key of the PDF
+        Then: The function should raise a PDFNotFoundError
+
+        Run with: python -m pytest tests/test_scraper.py::TestRemovePDF::test_delete_pdf_where_pdfkey_is_not_in_dictionary -v
+        """
+        pdf_dict = _load_urls()
+        input_key = "https://smartadvocate.na4.teamsupport.com/knowledgebase/99999999"
+
+        with pytest.raises(KeyError):
+            remove_pdf(input_key)
 
     def test_delete_pdf_where_master_file_is_empty(self):
-        pass
+        """Test the remove_pdf function where the master_file is empty
+
+        Given: A master_file that is empty
+        When: remove_pdf is called with the key of the PDF
+        Then: The function should raise a PDFNotFoundError
+
+        Run with: python -m pytest tests/test_scraper.py::TestRemovePDF::test_delete_pdf_where_master_file_is_empty -v
+        """
+        pdf_dict = _load_urls()
+        input_key = "https://smartadvocate.na4.teamsupport.com/knowledgebase/21992632"
+
+        with pytest.raises(ScraperExceptions.PDFNotFoundError):
+            remove_pdf(input_key)
