@@ -186,17 +186,25 @@ class TestRemovePDF:
         Given: A PDF that is known have a pdf after it so that the page range doesnt go out of bounds
         When: remove_pdf is called with the key of the PDF
         Then: The PDF should be deleted from the master_file and the page range should be updated in the dictionary - still to be added
+        
+        Run with: python -m pytest tests/test_scraper.py::TestRemovePDF::test_delete_pdf_in_safe_page_range -v
         """
         pdf_dict = _load_urls()
-        input_key = "https://smartadvocate.na4.teamsupport.com/knowledgeBase/21974167"
-        starting_total_master_pages = pymupdf.open(pdf_dict[input_key]["master_pdf"]).page_count
-        expected_total_master_pages = starting_total_master_pages - 8
+        input_key = "https://smartadvocate.na4.teamsupport.com/knowledgeBase/21938490"
+
+        with pymupdf.open(pdf_dict[input_key]["master_pdf"]) as master_doc:
+            starting_total_master_pages = master_doc.page_count
+
+        with pymupdf.open(pdf_dict[input_key]["path"]) as input_doc:
+            expected_total_master_pages = starting_total_master_pages - input_doc.page_count
 
         remove_pdf(input_key)
-        actual_total_master_pages = pymupdf.open(pdf_dict[input_key]["master_pdf"]).page_count
+
+        with pymupdf.open(pdf_dict[input_key]["master_pdf"]) as master_doc:
+            actual_total_master_pages = master_doc.page_count
+
         assert actual_total_master_pages == expected_total_master_pages
 
+        print(f"Starting total master pages: {starting_total_master_pages}")
         print(f"Expected total master pages: {expected_total_master_pages}")
         print(f"Actual total master pages: {actual_total_master_pages}")
-
-    

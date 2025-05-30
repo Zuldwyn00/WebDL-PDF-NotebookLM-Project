@@ -553,26 +553,26 @@ def apply_ocr(doc: pymupdf.Document) -> pymupdf.Document:
             temp_output.unlink()
         
         
-def remove_pdf(pdf_key:str) -> None:
+def remove_pdf(pdf_key:str, delete_from_json:bool = False) -> None:
     """Removes a PDF from the master_file it is found in, and updates the URL data to PEND status"""
     pdf_dict = _load_urls()
 
     if pdf_key in pdf_dict:
         data = pdf_dict[pdf_key]
         if data.get("master_pdf"):
-            start_page = data["page_number"] + 1
+            start_page = data["page_number"]
             
             keys_iter = dropwhile(lambda x: x[0] != pdf_key, pdf_dict.items())
             next(keys_iter)
-            end_page = next(keys_iter)[1]["page_number"]
+            end_page = next(keys_iter)[1]["page_number"] - 1
 
-            logger.debug(f"Starting page {start_page} -- ending page {end_page}")
+            logger.debug(f"Deleting pages {start_page} to {end_page} from {data['master_pdf']}")
 
             try:
                 master_doc = pymupdf.open(str(data["master_pdf"]))
                 master_doc.delete_pages(start_page, end_page)
                 logger.info(f"Deleted pages {start_page} to {end_page} from {data['master_pdf']}")
-                master_doc.save(str(data["master_pdf"]))
+                master_doc.save(str(data["master_pdf"]), incremental=True, encryption=0)
             except ValueError as e:
                 raise ScraperExceptions.PageDeleteError(f"Invalid page range: {start_page} to {end_page}")
             except RuntimeError as e:
