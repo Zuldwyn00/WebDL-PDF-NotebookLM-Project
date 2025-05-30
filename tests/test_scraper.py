@@ -205,10 +205,6 @@ class TestRemovePDF:
 
         assert actual_total_master_pages == expected_total_master_pages
 
-        print(f"Starting total master pages: {starting_total_master_pages}")
-        print(f"Expected total master pages: {expected_total_master_pages}")
-        print(f"Actual total master pages: {actual_total_master_pages}")
-
     def test_delete_last_pdf_in_dict(self):
         """Test the remove_pdf function using an unsafe pdf_key where it is the last pdf in the dictionary and the end of the master_file so there is
             no pdf after it to use as a page range reference. Error testing for if there is a pdf after but from different master_file is seperate test.
@@ -235,20 +231,35 @@ class TestRemovePDF:
 
         assert actual_total_master_pages == expected_total_master_pages
 
-        print(f"Starting total master pages: {starting_total_master_pages}")
-        print(f"Expected total master pages: {expected_total_master_pages}")
-        print(f"Actual total master pages: {actual_total_master_pages}")
 
     def test_delete_first_pdf_in_master_file(self):
         pass
 
     def test_delete_pdf_where_next_dict_item_is_from_different_master_file(self):
         """Test the remove_pdf function where the next dict item is from a different master_file
-        
+
         Given: A PDF that is key that where the next dict item is from a different master_file
         When: remove_pdf is called with the key of the PDF
         Then: The PDF should be deleted from the master_file and should should not delete from the other master_file or use the wrong page range
+
+        Run with: python -m pytest tests/test_scraper.py::TestRemovePDF::test_delete_pdf_where_next_dict_item_is_from_different_master_file -v
         """
+        pdf_dict = _load_urls()
+        input_key = "https://smartadvocate.na4.teamsupport.com/knowledgeBase/21691968"
+
+        with pymupdf.open(pdf_dict[input_key]["master_pdf"]) as master_doc:
+            starting_total_master_pages = master_doc.page_count
+
+        with pymupdf.open(pdf_dict[input_key]["path"]) as input_doc:
+            expected_total_master_pages = starting_total_master_pages - input_doc.page_count
+
+        remove_pdf(input_key)
+
+        with pymupdf.open(pdf_dict[input_key]["master_pdf"]) as master_doc:
+            actual_total_master_pages = master_doc.page_count
+
+        assert actual_total_master_pages == expected_total_master_pages
+
         
     def test_delete_pdf_where_pdfkey_is_not_in_dictionary(self):
         pass

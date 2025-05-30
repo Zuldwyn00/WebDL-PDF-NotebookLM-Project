@@ -554,7 +554,7 @@ def apply_ocr(doc: pymupdf.Document) -> pymupdf.Document:
             temp_output.unlink()
         
 
-#TODO: Update urls.j        
+#TODO: Update urls.j and if next pdf is from a different master_file find the next pdf from the same master_file
 def remove_pdf(pdf_key:str, delete_from_json:bool = False, blacklist_this_pdfkey:bool = False) -> None:
     """Removes a PDF from the master_file it is found in, and updates the URL data to PEND status"""
     pdf_dict = _load_urls()
@@ -574,10 +574,15 @@ def remove_pdf(pdf_key:str, delete_from_json:bool = False, blacklist_this_pdfkey
                     next(keys_iter) #skip the current pdf (pdf_key)
                     next_pdf_key = next(keys_iter) #get the next pdf
 
-                    if data.get("master_pdf") == next_pdf_key[1].get("master_pdf"):
-                        end_page = next_pdf_key[1]["page_number"] - 1
+                    while next_pdf_key[1].get("master_pdf") != data.get("master_pdf"):
+                        next_pdf_key = next(keys_iter)
+                        logger.debug(f"Next pdf_key contains different master_pdf: {next_pdf_key[1].get("master_pdf")}, skipping")
+                        if next_pdf_key[1].get("master_pdf") == data.get("master_pdf") and next_pdf_key[1].get("page_number") > start_page:
+                            end_page = next_pdf_key[1]["page_number"] - 1
+                            break
+                        
                 except StopIteration:
-                    #if no next pdf, or next pdf is from a different master_file, use default end_page
+                    #if no next pdf, use default end_page
                     pass
 
 
