@@ -45,7 +45,7 @@ pip install -r requirements.txt
 - Linux: `sudo apt-get install tesseract-ocr`
 - macOS: `brew install tesseract`
 
-## Project Structure
+## Project Structures
 
 ```
 PDFScraper/
