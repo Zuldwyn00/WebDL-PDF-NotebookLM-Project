@@ -559,46 +559,47 @@ def remove_pdf(pdf_key:str, delete_from_json:bool = False, blacklist_this_pdfkey
     """Removes a PDF from the master_file it is found in, and updates the URL data to PEND status"""
     pdf_dict = _load_urls()
 
-    if pdf_key in pdf_dict:
-        data = pdf_dict[pdf_key]
-        if data.get("master_pdf"):
-            start_page = data["page_number"]
-            #create an iterator starting from the matching pdf_key (inclusive) to the end of pdf_dict
-            keys_iter = dropwhile(lambda x: x[0] != pdf_key, pdf_dict.items())
+    if pdf_key not in pdf_dict:
+        raise ScraperExceptions.PDFNotFoundError
+    
+    data = pdf_dict[pdf_key]
+    if data.get("master_pdf"):
+        start_page = data["page_number"]
+        #create an iterator starting from the matching pdf_key (inclusive) to the end of pdf_dict
+        keys_iter = dropwhile(lambda x: x[0] != pdf_key, pdf_dict.items())
 
+        try:
+            master_doc = pymupdf.open(str(data["master_pdf"]))
+            end_page = master_doc.page_count - 1
+            try: #StopIteration is raised if there is no next pdf
+                next(keys_iter) #skip the current pdf (pdf_key)
+                next_pdf_key = next(keys_iter) #get the next pdf
 
-            try:
-                master_doc = pymupdf.open(str(data["master_pdf"]))
-                end_page = master_doc.page_count - 1
-                try: #StopIteration is raised if there is no next pdf
-                    next(keys_iter) #skip the current pdf (pdf_key)
-                    next_pdf_key = next(keys_iter) #get the next pdf
+                while next_pdf_key[1].get("master_pdf") != data.get("master_pdf"):
+                    next_pdf_key = next(keys_iter)
+                    logger.debug(f"Next pdf_key contains different master_pdf: {next_pdf_key[1].get("master_pdf")}, skipping")
+                    if next_pdf_key[1].get("master_pdf") == data.get("master_pdf") and next_pdf_key[1].get("page_number") > start_page:
+                        end_page = next_pdf_key[1]["page_number"] - 1
+                        break
 
-                    while next_pdf_key[1].get("master_pdf") != data.get("master_pdf"):
-                        next_pdf_key = next(keys_iter)
-                        logger.debug(f"Next pdf_key contains different master_pdf: {next_pdf_key[1].get("master_pdf")}, skipping")
-                        if next_pdf_key[1].get("master_pdf") == data.get("master_pdf") and next_pdf_key[1].get("page_number") > start_page:
-                            end_page = next_pdf_key[1]["page_number"] - 1
-                            break
-                        
-                except StopIteration:
-                    #if no next pdf, use default end_page
-                    pass
+            except StopIteration:
+                #if no next pdf, use default end_page
+                pass
+            
 
+            (end_page == master_doc.page_count) and logger.debug("pdf_key is last in master_file")
 
-                (end_page == master_doc.page_count) and logger.debug("pdf_key is last in master_file")
+            master_doc.delete_pages(start_page, end_page)
+            master_doc.save(str(data["master_pdf"]), incremental=True, encryption=0)
 
-                master_doc.delete_pages(start_page, end_page)
-                master_doc.save(str(data["master_pdf"]), incremental=True, encryption=0)
-
-            except ValueError as e:
-                raise ScraperExceptions.PageDeleteError(f"Invalid page range: {start_page} to {end_page}")
-            except RuntimeError as e:
-                raise ScraperExceptions.PageDeleteError(f"Failed to delete pages: {str(e)}")
-            except Exception as e:
-                raise ScraperExceptions.PageDeleteError(f"Unexpected error: {str(e)}")
-            finally:
-                master_doc.close()
+        except ValueError as e:
+            raise ScraperExceptions.PageDeleteError(f"Invalid page range: {start_page} to {end_page}")
+        except RuntimeError as e:
+            raise ScraperExceptions.PageDeleteError(f"Failed to delete pages: {str(e)}")
+        except Exception as e:
+            raise ScraperExceptions.PageDeleteError(f"Unexpected error: {str(e)}")
+        finally:
+            master_doc.close()
 
     logger.info(f"Deleted pages {start_page} to {end_page} from {data['master_pdf']}")
 
