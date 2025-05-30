@@ -95,6 +95,7 @@ WEBSITE_LINK = config["website"]["url"]
 
 # ─── PATHS ────────────────────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).resolve().parent
+DATA_DIR = SCRIPT_DIR / "data"
 CURRENT_DATE = datetime.now().strftime("%Y-%m-%d")
 DOWNLOAD_DIR = SCRIPT_DIR / config["directories"]["base"]
 DATED_DOWNLOAD_DIR = DOWNLOAD_DIR / CURRENT_DATE
@@ -104,10 +105,10 @@ TRANSCRIPT_MASTER_DIR = DOWNLOAD_DIR / config["directories"]["transcript_master"
 MAX_MASTER_PDF_SIZE = config["pdf"]["max_master_size_mb"] * 1024 * 1024  # Convert MB to bytes
 
 # ─── FILES ────────────────────────────────────────────────────────────────
-URLS_FILE = SCRIPT_DIR / "data" / config["files"]["urls"]
+URLS_FILE = SCRIPT_DIR / config["files"]["urls"]
 
 # ─── DIRECTORY SETUP ────────────────────────────────────────────────────────────────
-ensure_directories([DOWNLOAD_DIR, DATED_DOWNLOAD_DIR, MASTER_DIR, TRANSCRIPT_MASTER_DIR])
+ensure_directories([DATA_DIR, DOWNLOAD_DIR, DATED_DOWNLOAD_DIR, MASTER_DIR, TRANSCRIPT_MASTER_DIR])
 if not URLS_FILE.exists():
     URLS_FILE.touch()
     logger.info(f"Created file: {URLS_FILE}")
@@ -552,8 +553,9 @@ def apply_ocr(doc: pymupdf.Document) -> pymupdf.Document:
         if temp_output.exists():
             temp_output.unlink()
         
-        
-def remove_pdf(pdf_key:str, delete_from_json:bool = False) -> None:
+
+#TODO: Update urls.j        
+def remove_pdf(pdf_key:str, delete_from_json:bool = False, blacklist_this_pdfkey:bool = False) -> None:
     """Removes a PDF from the master_file it is found in, and updates the URL data to PEND status"""
     pdf_dict = _load_urls()
 
@@ -561,18 +563,29 @@ def remove_pdf(pdf_key:str, delete_from_json:bool = False) -> None:
         data = pdf_dict[pdf_key]
         if data.get("master_pdf"):
             start_page = data["page_number"]
-            
+            #create an iterator starting from the matching pdf_key (inclusive) to the end of pdf_dict
             keys_iter = dropwhile(lambda x: x[0] != pdf_key, pdf_dict.items())
-            next(keys_iter)
-            end_page = next(keys_iter)[1]["page_number"] - 1
 
-            logger.debug(f"Deleting pages {start_page} to {end_page} from {data['master_pdf']}")
 
             try:
                 master_doc = pymupdf.open(str(data["master_pdf"]))
+                end_page = master_doc.page_count - 1
+                try: #StopIteration is raised if there is no next pdf
+                    next(keys_iter) #skip the current pdf (pdf_key)
+                    next_pdf_key = next(keys_iter) #get the next pdf
+
+                    if data.get("master_pdf") == next_pdf_key[1].get("master_pdf"):
+                        end_page = next_pdf_key[1]["page_number"] - 1
+                except StopIteration:
+                    #if no next pdf, or next pdf is from a different master_file, use default end_page
+                    pass
+
+
+                (end_page == master_doc.page_count) and logger.debug("pdf_key is last in master_file")
+
                 master_doc.delete_pages(start_page, end_page)
-                logger.info(f"Deleted pages {start_page} to {end_page} from {data['master_pdf']}")
                 master_doc.save(str(data["master_pdf"]), incremental=True, encryption=0)
+
             except ValueError as e:
                 raise ScraperExceptions.PageDeleteError(f"Invalid page range: {start_page} to {end_page}")
             except RuntimeError as e:
@@ -581,7 +594,8 @@ def remove_pdf(pdf_key:str, delete_from_json:bool = False) -> None:
                 raise ScraperExceptions.PageDeleteError(f"Unexpected error: {str(e)}")
             finally:
                 master_doc.close()
-    print(end_page)
+
+    logger.info(f"Deleted pages {start_page} to {end_page} from {data['master_pdf']}")
 
             
 
