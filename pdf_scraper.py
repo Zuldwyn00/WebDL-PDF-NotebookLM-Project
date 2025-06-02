@@ -116,7 +116,16 @@ if not URLS_FILE.exists():
 # ─── DRIVER FUNCTIONS ────────────────────────────────────────────────────────────────
 def initialize_driver(timeout:int = None) -> webdriver.Chrome:
     """Initializes and returns a Chrome WebDriver instance with headless configuration.
-    If a driver already exists, returns the existing instance."""
+
+    Args:
+        timeout (int, optional): Custom timeout value in seconds. If None, uses config value.
+
+    Returns:
+        webdriver.Chrome: Configured Chrome WebDriver instance.
+
+    Raises:
+        WebDriverException: If driver initialization fails.
+    """
     global GLOBAL_DRIVER
     if GLOBAL_DRIVER is None:
         chrome_options = Options()
@@ -146,7 +155,11 @@ def initialize_driver(timeout:int = None) -> webdriver.Chrome:
     return GLOBAL_DRIVER
 
 def close_driver():
-    """Closes and cleans up the WebDriver instance if it exists."""
+    """Closes and cleans up the WebDriver instance if it exists.
+    
+    This function safely closes the global WebDriver instance and sets it to None.
+    Should be called when scraping is complete or if an error occurs.
+    """
     global GLOBAL_DRIVER
     if GLOBAL_DRIVER:
         GLOBAL_DRIVER.quit()
@@ -155,8 +168,27 @@ def close_driver():
 #-------------------------------------------------------------------------------#
 
 def get_links(website_url:str) -> dict:
-    """Scrapes all article links and video links from the website, organized by category and file type.
-    Returns a dictionary of links with their status and category information."""
+    """Scrapes all article links and video links from the website, organized by category.
+
+    Args:
+        website_url (str): The base URL to scrape links from.
+
+    Returns:
+        dict: Dictionary containing links with their status and category information.
+            Format: {
+                "url": {
+                    "status": str,  # "PEND", "FAIL", or "SUCC"
+                    "category": str,
+                    "type": str,    # "pdf" or "mp4"
+                    "master_pdf": str | None,
+                    "page_number": int | None
+                }
+            }
+
+    Raises:
+        WebDriverException: If web scraping fails.
+        TimeoutException: If page loading times out.
+    """
     driver = initialize_driver()
     logger.info("Beginning get_links from: %s", website_url)
     driver.get(website_url)
@@ -218,7 +250,17 @@ def get_links(website_url:str) -> dict:
 
 
 def wait_for_page_ready(driver):
-    """Waits for the page to be fully loaded by checking for spinner and image loading."""
+    """Waits for the page to be fully loaded by checking spinner and image loading.
+
+    Args:
+        driver (webdriver.Chrome): The WebDriver instance to use.
+
+    Returns:
+        bool: True if page is ready, False otherwise.
+
+    Raises:
+        TimeoutException: If page elements don't load within timeout period.
+    """
     wait = driver.wait
     # 1) wait for the spinner staleness
     try:
@@ -248,7 +290,17 @@ def wait_for_page_ready(driver):
 
 def download_pdfs(saved_links:dict) -> dict:
     """Downloads PDFs for all pending links and saves them to the dated directory.
-    Updates the status of each link in the saved_links dictionary."""
+
+    Args:
+        saved_links (dict): Dictionary of links with their status and metadata.
+
+    Returns:
+        dict: Updated saved_links dictionary with new statuses.
+
+    Raises:
+        DownloadError: If PDF download or saving fails.
+        ProcessingError: If PDF processing fails.
+    """
     driver = initialize_driver()
     
     # Calculate total PDFs to download
@@ -332,7 +384,19 @@ def download_pdfs(saved_links:dict) -> dict:
 # ─── PDF MANIPULATION ──────────────────────────────────────────────────────
 
 def _combine_categorize_pdfs() -> None:
-    """Combines all PDFs from the DATED_DOWNLOAD_DIR into master PDFs, splitting if necessary."""
+    """Combines all PDFs from the dated download directory into master PDFs by category.
+
+    This function:
+    1. Groups PDFs by category
+    2. Creates or updates master PDFs
+    3. Applies OCR if needed
+    4. Updates URL data with master PDF locations
+    5. Splits master PDFs if they exceed size limit
+
+    Raises:
+        ProcessingError: If PDF combination or categorization fails.
+        ResourceNotFoundError: If required directories or files are missing.
+    """
     try:
         logger.info("Starting PDF combination and categorization")
         
@@ -482,6 +546,18 @@ def _combine_categorize_pdfs() -> None:
 
 
 def process_transcripts() -> None:
+    """Processes video transcripts and combines them into master transcript PDFs.
+
+    This function:
+    1. Identifies videos in the URL database
+    2. Transcribes each video
+    3. Creates PDF documents from transcripts
+    4. Combines transcripts into master PDFs
+    5. Updates URL data with transcript information
+
+    Raises:
+        ProcessingError: If transcription or PDF creation fails.
+    """
     #seperate method so we can retain link to master_pdf, page_number
     pdf_dict = _load_urls()
     for url, data in pdf_dict.items():
@@ -503,7 +579,15 @@ def process_transcripts() -> None:
 
 def apply_ocr(doc: pymupdf.Document) -> pymupdf.Document:
     """OCR a PyMuPDF Document object and return the OCRed version with searchable text.
-    If less than minimum_ocr_pages(config) images are found, it will skip OCR.
+
+    Args:
+        doc (pymupdf.Document): The document to apply OCR to.
+
+    Returns:
+        pymupdf.Document: OCRed version of the document.
+
+    Raises:
+        ProcessingError: If OCR processing fails.
     """
 
     min_images = config["pdf"]["minimum_ocr_pages"]
@@ -556,7 +640,18 @@ def apply_ocr(doc: pymupdf.Document) -> pymupdf.Document:
 
 #TODO: Update urls.j
 def remove_pdf(pdf_key:str, delete_from_json:bool = False) -> None:
-    """Removes a PDF from the master_file it is found in, and updates the URL data to PEND status"""
+    """Removes a PDF from its master file and optionally from the URL database.
+
+    Args:
+        pdf_key (str): The URL key of the PDF to remove.
+        delete_from_json (bool, optional): Whether to delete the entry from urls.json.
+            Defaults to False.
+
+    Raises:
+        KeyError: If PDF key is not found in URL database.
+        ResourceNotFoundError: If master PDF is not found.
+        ProcessingError: If PDF deletion fails.
+    """
     pdf_dict = _load_urls()
 
     if pdf_key not in pdf_dict:
@@ -618,11 +713,11 @@ def remove_pdf(pdf_key:str, delete_from_json:bool = False) -> None:
 # ─── SAVING ────────────────────────────────────────────────────────────────
 
 def _normalize_url(raw_url:str) -> str:
-    """Normalizes a URL by removing trailing slashes and standardizing the format.
-    
+    """Normalizes a URL by standardizing format and removing unnecessary components.
+
     Args:
-        raw_url (str): The URL to normalize
-        
+        raw_url (str): The URL to normalize.
+
     Returns:
         str: Normalized URL with:
             - Scheme in lowercase
@@ -648,7 +743,19 @@ def _normalize_url(raw_url:str) -> str:
 
 
 def _add_url(saved_links:dict, raw_url:str, status:str = "PEND", category:str = "undefined", file_type:str = "pdf"):
-    """Adds a new URL to the saved_links dictionary with its status, category, and file type."""
+    """Adds a new URL to the saved_links dictionary with metadata.
+
+    Args:
+        saved_links (dict): Dictionary to add URL to.
+        raw_url (str): The URL to add.
+        status (str, optional): Status of the URL. Must be "PEND", "FAIL", or "SUCC".
+            Defaults to "PEND".
+        category (str, optional): Category of the content. Defaults to "undefined".
+        file_type (str, optional): Type of file ("pdf" or "mp4"). Defaults to "pdf".
+
+    Raises:
+        ValidationError: If status is not valid.
+    """
     status = status.upper()
     if status not in {"PEND", "FAIL", "SUCC"}:
         raise ValidationError("Status must be PEND, FAIL or SUCC")
@@ -664,7 +771,14 @@ def _add_url(saved_links:dict, raw_url:str, status:str = "PEND", category:str = 
 
 
 def _save_urls(saved_links:dict) -> None:
-    """Saves the saved_links dictionary to the URLs file in JSON format."""
+    """Saves the saved_links dictionary to the URLs file in JSON format.
+
+    Args:
+        saved_links (dict): Dictionary of URLs and their metadata to save.
+
+    Raises:
+        OSError: If saving to file fails.
+    """
     try:
         # Convert Path objects to strings before saving to JSON
         json_safe_links = {}
@@ -680,7 +794,11 @@ def _save_urls(saved_links:dict) -> None:
                       
             
 def _load_urls() -> dict:
-    """Loads the saved_links dictionary from the URLs file."""
+    """Loads the saved_links dictionary from the URLs file.
+
+    Returns:
+        dict: Dictionary of URLs and their metadata. Empty dict if file doesn't exist.
+    """
     if not URLS_FILE.exists() or URLS_FILE.stat().st_size == 0: #if empty, return blank set
         return {}
     try:
@@ -692,13 +810,13 @@ def _load_urls() -> dict:
 
 
 def _update_categories_file(updated_category: str) -> None:
-    """Checks if the categories have been updated and if so lists which categories have been updated in a file.
-    
+    """Updates the categories file with newly processed categories.
+
     Args:
-        updated_category (str): The category that has been updated
-        
+        updated_category (str): The category that has been updated.
+
     Raises:
-        OSError: If there is an error writing to the categories file
+        OSError: If writing to categories file fails.
     """
     categories_file = SCRIPT_DIR / config["files"]["updated_categories"]
     
@@ -716,7 +834,18 @@ def _update_categories_file(updated_category: str) -> None:
 
 
 def run_script():
-    """Main function that orchestrates the PDF scraping process."""
+    """Main function that orchestrates the PDF scraping process.
+
+    This function:
+    1. Scrapes links from the website
+    2. Downloads PDFs
+    3. Combines and categorizes PDFs
+    4. Processes video transcripts
+    5. Cleans up resources
+
+    Raises:
+        ScraperError: If any part of the scraping process fails.
+    """
     try:
         all_links = get_links(WEBSITE_LINK)
         print(f"INFO: Links found - {len(all_links)}")
@@ -730,7 +859,11 @@ def run_script():
         close_driver()
 
 
-def main():  
+def main():
+    """Entry point for the PDF scraper script.
+    
+    Runs the main scraping process and handles any top-level exceptions.
+    """
     run_script()  
 
 

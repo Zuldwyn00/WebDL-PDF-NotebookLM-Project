@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-"""
-Utility functions and classes for the PDF Scraper project.
-
-This module provides common functionality including configuration management,
-logging setup, directory operations, and custom exception classes.
-"""
 
 import logging
 import re
@@ -40,16 +33,24 @@ class ResourceNotFoundError(ScraperError):
 def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
     """
     Load configuration from config.yaml and sensitive_config.yaml files.
-    
+
+    This function loads and merges configuration data from both the main config file
+    and an optional sensitive config file. If a sensitive config exists, it will be
+    merged into the main config under the 'sensitive' key.
+
     Args:
-        config_path: Optional path to custom config file. If None, uses default location.
-        
+        config_path (Optional[str]): Path to custom config file. If None, uses default location.
+
     Returns:
-        Dictionary containing merged configuration data.
-        
+        Dict[str, Any]: Dictionary containing merged configuration data.
+
     Raises:
         FileNotFoundError: If required configuration files are not found.
         ValueError: If configuration files contain invalid YAML.
+
+    Example:
+        >>> config = load_config()
+        >>> print(config['website']['base_url'])
     """
     if config_path:
         main_config_path = Path(config_path)
@@ -88,14 +89,22 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
 
 # ─── LOGGER ────────────────────────────────────────────────────────────────
 class TqdmLoggingHandler(logging.Handler):
-    """Custom logging handler that works with tqdm progress bars."""
+    """
+    Custom logging handler that works with tqdm progress bars.
+
+    This handler ensures that log messages don't interfere with tqdm progress bars
+    by using tqdm.write() instead of print().
+    """
     
     def emit(self, record: logging.LogRecord) -> None:
         """
         Emit a log record using tqdm.write to avoid interfering with progress bars.
-        
+
         Args:
-            record: The log record to emit.
+            record (logging.LogRecord): The log record to emit.
+
+        Note:
+            This method uses tqdm.write() to ensure compatibility with progress bars.
         """
         try:
             msg = self.format(record)
@@ -107,14 +116,21 @@ class TqdmLoggingHandler(logging.Handler):
 def setup_logger(name: str, config: Dict[str, Any], level: Optional[str] = None) -> logging.Logger:
     """
     Configure and return a logger that works with tqdm progress bars.
-    
+
+    Sets up a logger with console output that won't interfere with progress bars.
+    Uses a custom TqdmLoggingHandler for output.
+
     Args:
-        name: Name of the logger (typically __name__).
-        config: Configuration dictionary containing logger settings.
-        level: Optional log level override.
-        
+        name (str): Name of the logger (typically __name__).
+        config (Dict[str, Any]): Configuration dictionary containing logger settings.
+        level (Optional[str]): Optional log level override.
+
     Returns:
-        Configured logger instance.
+        logging.Logger: Configured logger instance.
+
+    Example:
+        >>> logger = setup_logger(__name__, config)
+        >>> logger.info("Processing started")
     """
     logger = logging.getLogger(name)
     if level is None:
@@ -134,9 +150,16 @@ def setup_logger(name: str, config: Dict[str, Any], level: Optional[str] = None)
 def ensure_directories(directories: List[Path]) -> None:
     """
     Ensure all specified directories exist, creating them if necessary.
-    
+
+    Creates directories and any necessary parent directories if they don't exist.
+    If directories already exist, this function does nothing.
+
     Args:
-        directories: List of Path objects representing directories to create.
+        directories (List[Path]): List of Path objects representing directories to create.
+
+    Example:
+        >>> paths = [Path("data/pdfs"), Path("data/transcripts")]
+        >>> ensure_directories(paths)
     """
     for directory in directories:
         directory.mkdir(parents=True, exist_ok=True)
@@ -145,12 +168,19 @@ def ensure_directories(directories: List[Path]) -> None:
 def get_doc_size_bytes(doc: pymupdf.Document) -> int:
     """
     Calculate the total size of a PDF document in bytes.
-    
+
+    Saves the document to a temporary buffer to calculate its size.
+
     Args:
-        doc: PyMuPDF Document object to measure.
-        
+        doc (pymupdf.Document): PyMuPDF Document object to measure.
+
     Returns:
-        Size of the document in bytes.
+        int: Size of the document in bytes.
+
+    Example:
+        >>> doc = fitz.open("example.pdf")
+        >>> size = get_doc_size_bytes(doc)
+        >>> print(f"Document size: {size} bytes")
     """
     buf = io.BytesIO()
     doc.save(buf)
@@ -159,18 +189,21 @@ def get_doc_size_bytes(doc: pymupdf.Document) -> int:
 def get_highest_index(paths: List[Path], prefix: str) -> int:
     """
     Find the highest index number from a list of PDF files with a given prefix.
-    
+
+    Searches through a list of paths for files matching the pattern "{prefix}_N.pdf"
+    where N is a number, and returns the highest N found.
+
     Args:
-        paths: List of Path objects to search through.
-        prefix: Filename prefix to match (e.g., "master", "transcript").
-        
+        paths (List[Path]): List of Path objects to search through.
+        prefix (str): Filename prefix to match (e.g., "master", "transcript").
+
     Returns:
-        Highest index number found, or 0 if no matching files exist.
-        
+        int: Highest index number found, or 0 if no matching files exist.
+
     Example:
         >>> paths = [Path("master_1.pdf"), Path("master_3.pdf"), Path("master_2.pdf")]
-        >>> get_highest_index(paths, "master")
-        3
+        >>> highest = get_highest_index(paths, "master")
+        >>> print(highest)  # Output: 3
     """
     indices = []
     for p in paths:

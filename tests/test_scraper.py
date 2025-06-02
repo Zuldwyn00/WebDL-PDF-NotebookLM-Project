@@ -1,12 +1,4 @@
-"""
-Test suite for pdf_scraper module.
 
-This module contains unit tests for the PDF scraper functionality,
-
-Test Classes:
-    TestNormalizeURL: Tests for URL normalization functionality
-    TestAddURL: Tests for URL addition to dictionary functionality
-"""
 
 import pytest
 from pdf_scraper import _normalize_url, _add_url, ScraperExceptions, apply_ocr, remove_pdf, _load_urls

@@ -35,8 +35,19 @@ WHISPER_MODEL = config["transcript"]["model"]
 ensure_directories([TRANSCRIPT_MASTER_DIR])
 
 def download_video(url, output_path):
-    """Download a video from a direct link to a temporary file"""
-    print(f"Downloading video from {url}...")
+    """Downloads a video from a direct URL to a local file.
+
+    Args:
+        url (str): The direct URL to the video file.
+        output_path (str): Local path where the video should be saved.
+
+    Returns:
+        str: Path to the downloaded video file.
+
+    Raises:
+        requests.exceptions.RequestException: If video download fails.
+    """
+    logger.info(f"Downloading video from {url}...")
     response = requests.get(url, stream=True)
     response.raise_for_status()
     
@@ -58,7 +69,18 @@ def download_video(url, output_path):
     return output_path
 
 def extract_audio(video_path, audio_path):
-    """Extract audio from video file"""
+    """Extracts audio track from a video file.
+
+    Args:
+        video_path (str): Path to the input video file.
+        audio_path (str): Path where the extracted audio should be saved.
+
+    Returns:
+        str: Path to the extracted audio file.
+
+    Raises:
+        IOError: If audio extraction fails.
+    """
     logger.info("Extracting audio from video...")
     video = VideoFileClip(video_path)
     video.audio.write_audiofile(audio_path, verbose=False, logger=None)
@@ -67,11 +89,33 @@ def extract_audio(video_path, audio_path):
     return audio_path
 
 def format_timestamp(seconds):
-    """Format seconds as HH:MM:SS"""
+    """Formats a duration in seconds to a human-readable timestamp.
+
+    Args:
+        seconds (float): Duration in seconds.
+
+    Returns:
+        str: Formatted timestamp in HH:MM:SS format.
+    """
     return str(timedelta(seconds=round(seconds)))
 
 def transcribe_audio(audio_path, chunk_duration=CHUNK_DURATION_MINUTES*60):
-    """Transcribe audio file using Whisper, processing in chunks"""
+    """Transcribes an audio file using OpenAI's Whisper model.
+
+    Processes the audio in chunks to handle long recordings efficiently.
+
+    Args:
+        audio_path (str): Path to the audio file to transcribe.
+        chunk_duration (int, optional): Duration of each chunk in seconds.
+            Defaults to CHUNK_DURATION_MINUTES*60.
+
+    Returns:
+        list: List of dictionaries containing transcribed segments with timestamps.
+            Each segment has 'start', 'end', and 'text' keys.
+
+    Raises:
+        ProcessingError: If transcription fails.
+    """
     logger.debug(f"Loading Whisper model ({WHISPER_MODEL})...")
     model = whisper.load_model(WHISPER_MODEL)
     
@@ -111,11 +155,16 @@ def transcribe_audio(audio_path, chunk_duration=CHUNK_DURATION_MINUTES*60):
     return full_transcript
 
 def combine_transcript(transcript_doc: pymupdf.Document):
-    """
-    Combine transcript into master PDF document, creating new master PDFs when size limit is reached.
-    
+    """Combines a transcript document into master PDF files.
+
+    Creates new master PDFs when size limit is reached. Updates metadata and
+    maintains organization of transcripts.
+
     Args:
-        transcript_doc (pymupdf.Document): The transcript document to add to master
+        transcript_doc (pymupdf.Document): The transcript document to add to master.
+
+    Raises:
+        ProcessingError: If combining transcripts fails.
     """
     try:
         logger.info("Combining and categorizing transcript...")
@@ -166,10 +215,18 @@ def combine_transcript(transcript_doc: pymupdf.Document):
             master_doc.close()
             
     except Exception as e:
-        raise TranscriptionExceptions.ProcessingError(f"Transcription combining failed: {str(e)}")
+        raise ProcessingError(f"Transcription combining failed: {str(e)}")
 
 def save_transcript(transcript, output_file):
-    """Save transcript to file in readable format"""
+    """Saves a transcript to a text file in a readable format.
+
+    Args:
+        transcript (list): List of transcribed segments with timestamps.
+        output_file (str): Path where the transcript should be saved.
+
+    Raises:
+        IOError: If saving transcript fails.
+    """
     with open(output_file, "w", encoding="utf-8") as f:
         for segment in transcript:
             start_time = format_timestamp(segment["start"])
@@ -180,16 +237,23 @@ def save_transcript(transcript, output_file):
     logger.info(f"Transcript saved to {output_file}")
 
 def transcribe_video(url, chunk_duration_minutes=10, category=None, master=None, master_page=None):
-    """
-    Transcribe a video from a URL and return a PDF document object.
-    
+    """Transcribes a video from a URL and creates a PDF document.
+
+    Downloads video, extracts audio, transcribes speech, and formats result as PDF
+    with metadata and timestamps.
+
     Args:
-        url (str): Direct URL to the video file
-        chunk_duration_minutes (int): Duration of chunks in minutes (default: 10)
-        category (str): Category of the video content (default: None)
-    
+        url (str): Direct URL to the video file.
+        chunk_duration_minutes (int, optional): Duration of chunks in minutes. Defaults to 10.
+        category (str, optional): Category of the video content. Defaults to None.
+        master (str, optional): Path to master PDF source. Defaults to None.
+        master_page (int, optional): Page number in master PDF. Defaults to None.
+
     Returns:
-        pymupdf.Document: A PyMuPDF document containing the transcribed text and metadata
+        pymupdf.Document: PDF document containing transcribed text and metadata.
+
+    Raises:
+        ProcessingError: If video transcription fails at any stage.
     """
     start_time = time.time()
     
@@ -279,7 +343,10 @@ def transcribe_video(url, chunk_duration_minutes=10, category=None, master=None,
             raise ProcessingError(f"Video transcription failed: {str(e)}")
 
 def main():
-    """Example usage of the transcribe_video function"""
+    """Example usage of the transcribe_video function.
+    
+    Demonstrates how to transcribe a video from a URL.
+    """
     # Example URL - replace with your video URL
     video_url = "https://example.com/video.mp4"
     transcribe_video(video_url)
