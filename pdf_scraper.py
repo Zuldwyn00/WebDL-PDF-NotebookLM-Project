@@ -554,8 +554,8 @@ def apply_ocr(doc: pymupdf.Document) -> pymupdf.Document:
             temp_output.unlink()
         
 
-#TODO: Update urls.j and if next pdf is from a different master_file find the next pdf from the same master_file
-def remove_pdf(pdf_key:str, delete_from_json:bool = False, blacklist_this_pdfkey:bool = False) -> None:
+#TODO: Update urls.j
+def remove_pdf(pdf_key:str, delete_from_json:bool = False) -> None:
     """Removes a PDF from the master_file it is found in, and updates the URL data to PEND status"""
     pdf_dict = _load_urls()
 
@@ -597,17 +597,24 @@ def remove_pdf(pdf_key:str, delete_from_json:bool = False, blacklist_this_pdfkey
         except ValueError as e:
             raise ScraperExceptions.PageDeleteError(f"Invalid page range: {start_page} to {end_page}")
         except RuntimeError as e:
-            raise ScraperExceptions.PageDeleteError(f"Failed to delete pages: {str(e)}")
+            raise RuntimeError(f"Failed to delete pages: {str(e)}")
+        except TypeError as e:
+            raise TypeError(f"Unexpected error: {str(e)}")
         except Exception as e:
             raise ScraperExceptions.PageDeleteError(f"Unexpected error: {str(e)}")
         finally:
             master_doc.close()
 
+    if delete_from_json:
+        del pdf_dict[pdf_key]
+        logger.info(f"Deleted {pdf_key} from urls.json")
+    else:
+        pdf_dict[pdf_key]["status"] = "PEND"
+
+    _save_urls(pdf_dict)     
     logger.info(f"Deleted pages {start_page} to {end_page} from {data['master_pdf']}")
 
             
-
-
 # ─── SAVING ────────────────────────────────────────────────────────────────
 
 def _normalize_url(raw_url:str) -> str:
