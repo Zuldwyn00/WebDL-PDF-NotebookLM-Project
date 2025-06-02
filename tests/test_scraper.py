@@ -231,7 +231,6 @@ class TestRemovePDF:
 
         assert actual_total_master_pages == expected_total_master_pages
 
-
     def test_delete_pdf_where_next_dict_item_is_from_different_master_file(self):
         """Test the remove_pdf function where the next dict item is from a different master_file
 
@@ -257,7 +256,6 @@ class TestRemovePDF:
 
         assert actual_total_master_pages == expected_total_master_pages
 
-        
     def test_delete_pdf_where_pdfkey_is_not_in_dictionary(self):
         """Test the remove_pdf function where the given pdf_key is not in the dictionary
 
