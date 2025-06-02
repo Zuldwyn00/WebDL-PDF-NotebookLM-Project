@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
-#TODO:
-# 
-
+# TODO:
+#
 
 
 import os
@@ -17,7 +16,14 @@ from moviepy.editor import VideoFileClip
 import pymupdf
 from pathlib import Path
 import json
-from utils import setup_logger, load_config, ensure_directories, get_doc_size_bytes, get_highest_index, ProcessingError
+from utils import (
+    setup_logger,
+    load_config,
+    ensure_directories,
+    get_doc_size_bytes,
+    get_highest_index,
+    ProcessingError,
+)
 
 # ─── LOGGER & CONFIG ────────────────────────────────────────────────────────────────
 config = load_config()
@@ -27,12 +33,15 @@ logger = setup_logger(__name__, config)
 SCRIPT_DIR = Path(__file__).resolve().parent
 DOWNLOAD_DIR = SCRIPT_DIR / config["directories"]["base"]
 TRANSCRIPT_MASTER_DIR = DOWNLOAD_DIR / config["directories"]["transcript_master"]
-MAX_MASTER_PDF_SIZE = config["pdf"]["max_master_size_mb"] * 1024 * 1024  # Convert MB to bytes
+MAX_MASTER_PDF_SIZE = (
+    config["pdf"]["max_master_size_mb"] * 1024 * 1024
+)  # Convert MB to bytes
 CHUNK_DURATION_MINUTES = config["transcript"]["chunk_duration_minutes"]
 WHISPER_MODEL = config["transcript"]["model"]
 
 # ─── DIRECTORY SETUP ────────────────────────────────────────────────────────────────
 ensure_directories([TRANSCRIPT_MASTER_DIR])
+
 
 def download_video(url, output_path):
     """Downloads a video from a direct URL to a local file.
@@ -50,23 +59,24 @@ def download_video(url, output_path):
     logger.info(f"Downloading video from {url}...")
     response = requests.get(url, stream=True)
     response.raise_for_status()
-    
-    total_size = int(response.headers.get('content-length', 0))
+
+    total_size = int(response.headers.get("content-length", 0))
     block_size = 1024  # 1 Kibibyte
-    
-    with open(output_path, 'wb') as file, tqdm(
-            desc="Downloading",
-            total=total_size,
-            unit='iB',
-            unit_scale=True,
-            unit_divisor=1024,
-        ) as bar:
+
+    with open(output_path, "wb") as file, tqdm(
+        desc="Downloading",
+        total=total_size,
+        unit="iB",
+        unit_scale=True,
+        unit_divisor=1024,
+    ) as bar:
         for data in response.iter_content(block_size):
             size = file.write(data)
             bar.update(size)
-    
+
     logger.debug(f"Video downloaded to {output_path}")
     return output_path
+
 
 def extract_audio(video_path, audio_path):
     """Extracts audio track from a video file.
@@ -88,6 +98,7 @@ def extract_audio(video_path, audio_path):
     logger.debug(f"Audio extracted to {audio_path}")
     return audio_path
 
+
 def format_timestamp(seconds):
     """Formats a duration in seconds to a human-readable timestamp.
 
@@ -99,7 +110,8 @@ def format_timestamp(seconds):
     """
     return str(timedelta(seconds=round(seconds)))
 
-def transcribe_audio(audio_path, chunk_duration=CHUNK_DURATION_MINUTES*60):
+
+def transcribe_audio(audio_path, chunk_duration=CHUNK_DURATION_MINUTES * 60):
     """Transcribes an audio file using OpenAI's Whisper model.
 
     Processes the audio in chunks to handle long recordings efficiently.
@@ -118,41 +130,44 @@ def transcribe_audio(audio_path, chunk_duration=CHUNK_DURATION_MINUTES*60):
     """
     logger.debug(f"Loading Whisper model ({WHISPER_MODEL})...")
     model = whisper.load_model(WHISPER_MODEL)
-    
+
     logger.info("Starting transcription...")
     audio = whisper.load_audio(audio_path)
     audio_duration = len(audio) / whisper.audio.SAMPLE_RATE
-    
+
     logger.info(f"Audio duration: {format_timestamp(audio_duration)}")
-    
+
     # Calculate the number of chunks
     chunk_size = chunk_duration * whisper.audio.SAMPLE_RATE
     num_chunks = int(len(audio) / chunk_size) + 1
-    
+
     full_transcript = []
-    
+
     for i in range(num_chunks):
         start_sample = int(i * chunk_size)
         end_sample = min(int((i + 1) * chunk_size), len(audio))
-        
+
         if start_sample >= len(audio):
             break
-        
+
         start_time = start_sample / whisper.audio.SAMPLE_RATE
         end_time = end_sample / whisper.audio.SAMPLE_RATE
-        
-        logger.debug(f"Transcribing chunk {i+1}/{num_chunks} [{format_timestamp(start_time)} - {format_timestamp(end_time)}]")
-        
+
+        logger.debug(
+            f"Transcribing chunk {i+1}/{num_chunks} [{format_timestamp(start_time)} - {format_timestamp(end_time)}]"
+        )
+
         audio_chunk = audio[start_sample:end_sample]
         result = model.transcribe(audio_chunk)
-        
+
         # Adjust timestamps to account for chunk position
         for segment in result["segments"]:
             segment["start"] += start_time
             segment["end"] += start_time
             full_transcript.append(segment)
-    
+
     return full_transcript
+
 
 def combine_transcript(transcript_doc: pymupdf.Document):
     """Combines a transcript document into master PDF files.
@@ -171,11 +186,11 @@ def combine_transcript(transcript_doc: pymupdf.Document):
         # Get metadata from transcript
         metadata = transcript_doc.metadata
         title = metadata.get("title", "Unknown")
-        
+
         # Find existing master PDFs
         existing_masters = list(TRANSCRIPT_MASTER_DIR.glob("transcripts_master_*.pdf"))
         current_index = get_highest_index(existing_masters, "transcripts_master") or 1
-        
+
         # Open or create master PDF
         master_path = TRANSCRIPT_MASTER_DIR / f"transcripts_master_{current_index}.pdf"
         if master_path.exists():
@@ -186,36 +201,42 @@ def combine_transcript(transcript_doc: pymupdf.Document):
             master_doc = pymupdf.open()
             master_doc.new_page()
             incremental = False
-        
+
         try:
             # Check size limit
-            if get_doc_size_bytes(master_doc) + get_doc_size_bytes(transcript_doc) > MAX_MASTER_PDF_SIZE:
+            if (
+                get_doc_size_bytes(master_doc) + get_doc_size_bytes(transcript_doc)
+                > MAX_MASTER_PDF_SIZE
+            ):
                 logger.debug(f"Size limit reached, creating new master PDF")
-                
+
                 # Save current and create new master
                 master_doc.save(str(master_path), incremental=incremental, encryption=0)
                 master_doc.close()
-                
+
                 current_index += 1
-                master_path = TRANSCRIPT_MASTER_DIR / f"transcripts_master_{current_index}.pdf"
+                master_path = (
+                    TRANSCRIPT_MASTER_DIR / f"transcripts_master_{current_index}.pdf"
+                )
                 master_doc = pymupdf.open()
                 master_doc.new_page()
                 incremental = False
-            
+
             # Add transcript to master
             master_doc.insert_pdf(transcript_doc)
-            
+
             # Save master PDF
             logger.debug(f"Saving master PDF: {master_path}")
             master_doc.save(str(master_path), incremental=incremental, encryption=0)
-            
+
             logger.info(f"Added transcript '{title}' to master PDF {master_path.name}")
-            
+
         finally:
             master_doc.close()
-            
+
     except Exception as e:
         raise ProcessingError(f"Transcription combining failed: {str(e)}")
+
 
 def save_transcript(transcript, output_file):
     """Saves a transcript to a text file in a readable format.
@@ -233,10 +254,13 @@ def save_transcript(transcript, output_file):
             end_time = format_timestamp(segment["end"])
             text = segment["text"]
             f.write(f"[{start_time} - {end_time}] {text}\n")
-    
+
     logger.info(f"Transcript saved to {output_file}")
 
-def transcribe_video(url, chunk_duration_minutes=10, category=None, master=None, master_page=None):
+
+def transcribe_video(
+    url, chunk_duration_minutes=10, category=None, master=None, master_page=None
+):
     """Transcribes a video from a URL and creates a PDF document.
 
     Downloads video, extracts audio, transcribes speech, and formats result as PDF
@@ -256,100 +280,105 @@ def transcribe_video(url, chunk_duration_minutes=10, category=None, master=None,
         ProcessingError: If video transcription fails at any stage.
     """
     start_time = time.time()
-    
+
     # Load metadata from urls.json
     metadata = {}
     filename = "transcript"  # Default values
     try:
-        with open('data/urls.json', 'r') as f:
+        with open("data/urls.json", "r") as f:
             urls_data = json.load(f)
             if url in urls_data:
                 metadata = urls_data[url]
                 # Use category from urls.json if not provided
                 if not category:
-                    category = metadata.get('category')
+                    category = metadata.get("category")
                 # Get filename from path in urls.json
-                filename = Path(metadata.get('path', '')).stem
+                filename = Path(metadata.get("path", "")).stem
     except Exception as e:
         logger.warning(f"Could not load metadata from urls.json: {e}")
-    
+
     # Create a temporary directory for files
     with tempfile.TemporaryDirectory() as temp_dir:
         try:
             # Download the video
             video_path = os.path.join(temp_dir, "video.mp4")
             download_video(url, video_path)
-            
+
             # Extract audio
             audio_path = os.path.join(temp_dir, "audio.wav")
             extract_audio(video_path, audio_path)
-            
+
             # Transcribe the audio
-            transcript = transcribe_audio(audio_path, chunk_duration=chunk_duration_minutes*60)
-            
+            transcript = transcribe_audio(
+                audio_path, chunk_duration=chunk_duration_minutes * 60
+            )
+
             # First save as text file (like the working version)
             text_path = os.path.join(temp_dir, "transcript.txt")
             save_transcript(transcript, text_path)
-            
+
             # Create a new PDF document
             doc = pymupdf.open()
             page = doc.new_page()
-            
+
             # Add metadata to document
-            doc.set_metadata({
-                "title": filename,
-                "subject": "Video Transcript"
-            })
-            
+            doc.set_metadata({"title": filename, "subject": "Video Transcript"})
+
             # Add title and metadata to first page
             title_font = pymupdf.Font("helv")
             text_font = pymupdf.Font("helv")
-            
+
             # Add title
             page.insert_text((50, 50), f"Transcript: {filename}", fontsize=16)
-            
+
             # Add custom information at the start
             y_pos = 100
-            page.insert_text((50, y_pos), f"Category: {category or 'Unknown'}", fontsize=12)
+            page.insert_text(
+                (50, y_pos), f"Category: {category or 'Unknown'}", fontsize=12
+            )
 
             y_pos += 20
             page.insert_text((50, y_pos), f"Type: Video", fontsize=12)
             y_pos += 20
             page.insert_text((50, y_pos), f"Master PDF Source: {master}", fontsize=12)
             y_pos += 20
-            page.insert_text((50, y_pos), f"Master PDF Page Number: {master_page}", fontsize=12)
-            
+            page.insert_text(
+                (50, y_pos), f"Master PDF Page Number: {master_page}", fontsize=12
+            )
+
             # Add transcript content from the text file
             y_pos += 40
-            with open(text_path, 'r', encoding='utf-8') as f:
+            with open(text_path, "r", encoding="utf-8") as f:
                 for line in f:
                     # Add text
                     page.insert_text((50, y_pos), line.strip(), fontsize=12)
                     y_pos += 20
-                    
+
                     # Create new page if needed
                     if y_pos > page.rect.height - 50:
                         page = doc.new_page()
                         y_pos = 50
-            
+
             logger.info("Transcription completed successfully!")
             elapsed_time = time.time() - start_time
             logger.debug(f"Total processing time: {format_timestamp(elapsed_time)}")
-            
+
             return doc
-            
+
         except Exception as e:
             logger.error(f" {e}", file=sys.stderr)
             raise ProcessingError(f"Video transcription failed: {str(e)}")
 
+
 def main():
     """Example usage of the transcribe_video function.
-    
+
     Demonstrates how to transcribe a video from a URL.
     """
     # Example URL - replace with your video URL
     video_url = "https://example.com/video.mp4"
     transcribe_video(video_url)
 
+
 if __name__ == "__main__":
-    main() 
+    main()
