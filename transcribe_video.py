@@ -17,7 +17,7 @@ from moviepy.editor import VideoFileClip
 import pymupdf
 from pathlib import Path
 import json
-from utils import setup_logger, load_config, ensure_directories, get_doc_size_bytes, get_highest_index, TranscriptionExceptions
+from utils import setup_logger, load_config, ensure_directories, get_doc_size_bytes, get_highest_index, ProcessingError
 
 # ─── LOGGER & CONFIG ────────────────────────────────────────────────────────────────
 config = load_config()
@@ -275,5 +275,14 @@ def transcribe_video(url, chunk_duration_minutes=10, category=None, master=None,
             return doc
             
         except Exception as e:
-            logger.error(f"Error transcribing video {url}: {str(e)}")
-            raise TranscriptionExceptions.VideoProcessingError(f"Video transcription failed: {str(e)}") 
+            logger.error(f" {e}", file=sys.stderr)
+            raise ProcessingError(f"Video transcription failed: {str(e)}")
+
+def main():
+    """Example usage of the transcribe_video function"""
+    # Example URL - replace with your video URL
+    video_url = "https://example.com/video.mp4"
+    transcribe_video(video_url)
+
+if __name__ == "__main__":
+    main() 

@@ -16,51 +16,25 @@ import io
 import pymupdf
 
 # ─── CUSTOM EXCEPTIONS ────────────────────────────────────────────────────────────────
-class ScraperExceptions:
-    """Collection of custom exceptions for the PDF Scraper."""
-    
-    class BaseError(Exception):
-        """Base exception for PDF Scraper"""
-        pass
-    
-    class PDFScraperError(BaseError):
-        """Raised when the main PDF scraping process fails"""
-        pass
+class ScraperError(Exception):
+    """Base exception for all scraper-related errors."""
+    pass
 
-    class StatusError(PDFScraperError):
-        """Raised when status is not valid"""
-        pass
+class DownloadError(ScraperError):
+    """Raised when downloading PDFs or videos fails."""
+    pass
 
-    class DownloadError(PDFScraperError):
-        """Raised when PDF download fails"""
-        pass
-    
-    class ProcessingError(PDFScraperError):
-        """Raised when PDF processing/editing fails"""
-        pass
-    
-    class PageUpdateError(ProcessingError):
-        """Raised when page update fails"""
-        pass
+class ProcessingError(ScraperError):
+    """Raised when processing PDFs, videos, or transcripts fails."""
+    pass
 
-    class PageDeleteError(ProcessingError):
-        """Raised when page deletion fails"""
-        pass
+class ValidationError(ScraperError):
+    """Raised when input validation fails (e.g., invalid status, missing files)."""
+    pass
 
-    class PDFNotFoundError(PDFScraperError):
-        """Raised when a PDF key is not found in the dictionary or has no associated master PDF"""
-        pass
-
-class TranscriptionExceptions:
-    """Collection of custom exceptions for the Transcription."""
-    
-    class BaseError(Exception):
-        """Base exception for Transcription"""
-        pass
-    
-    class VideoProcessingError(BaseError):
-        """Raised when video processing fails"""
-        pass
+class ResourceNotFoundError(ScraperError):
+    """Raised when a required resource (PDF, video, file) is not found."""
+    pass
 
 # ─── CONFIGURATION ──────────────────────────────────────────────────────────
 def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:

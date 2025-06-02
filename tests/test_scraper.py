@@ -10,6 +10,7 @@ Test Classes:
 
 import pytest
 from pdf_scraper import _normalize_url, _add_url, ScraperExceptions, apply_ocr, remove_pdf, _load_urls
+from utils import ValidationError, ResourceNotFoundError
 import pymupdf
 
 
@@ -135,19 +136,19 @@ class TestAddURL:
         print(f"✅ Dictionary after adding URL: {saved_links}")
 
     def test_invalid_status_raises_error(self):
-        """Test that _add_url raises StatusError for invalid status values.
+        """Test that _add_url raises ValidationError for invalid status values.
         
         Given: A dictionary and URL with invalid status value
         When: _add_url is called with an invalid status
-        Then: A StatusError should be raised with appropriate message
+        Then: A ValidationError should be raised with appropriate message
         """
         # ARRANGE: Set up our test data
         saved_links = {}
         test_url = "https://example.com/test"
-        exc_expected = ScraperExceptions.StatusError("Status must be PEND, FAIL or SUCC")
+        exc_expected = ValidationError("Status must be PEND, FAIL or SUCC")
 
         # ACT & ASSERT: Check that the function raises the correct error
-        with pytest.raises(ScraperExceptions.StatusError) as exc_result:
+        with pytest.raises(ValidationError) as exc_result:
             _add_url(saved_links, test_url, status="INVALID")
         
         # Verify the error message
@@ -283,5 +284,5 @@ class TestRemovePDF:
         pdf_dict = _load_urls()
         input_key = "https://smartadvocate.na4.teamsupport.com/knowledgebase/21992632"
 
-        with pytest.raises(ScraperExceptions.PDFNotFoundError):
+        with pytest.raises(ResourceNotFoundError):
             remove_pdf(input_key)

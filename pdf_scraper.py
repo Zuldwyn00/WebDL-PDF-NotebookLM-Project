@@ -48,7 +48,7 @@ import logging
 
 # Local imports
 from transcribe_video import transcribe_video, combine_transcript
-from utils import setup_logger, load_config, ensure_directories, get_doc_size_bytes, get_highest_index, ScraperExceptions, TranscriptionExceptions
+from utils import setup_logger, load_config, ensure_directories, get_doc_size_bytes, get_highest_index, ScraperError, DownloadError, ProcessingError, ValidationError, ResourceNotFoundError
 
 # ─── LOGGER & CONFIG ────────────────────────────────────────────────────────────────
 config = load_config()
@@ -291,7 +291,7 @@ def download_pdfs(saved_links:dict) -> dict:
                     pdf_bytes = base64.b64decode(pdf["data"])
                     
                     if len(pdf_bytes) <= 2 * 1024:
-                        raise ScraperExceptions.DownloadError(f"PDF too small for {link}")
+                        raise DownloadError(f"PDF too small for {link}")
                         
                     parse = urlparse(link)
                     name = (parse.netloc + parse.path).strip("/").replace("/", "_")
@@ -304,15 +304,15 @@ def download_pdfs(saved_links:dict) -> dict:
                         if not data["type"] == "mp4": #if not mp4, then we can set status to SUCC
                             data["status"] = "SUCC"
                     except IOError as e:
-                        raise ScraperExceptions.DownloadError(f"Failed to save PDF {finalname}: {str(e)}")
+                        raise DownloadError(f"Failed to save PDF {finalname}: {str(e)}")
 
                 except TimeoutException as e:
                     logger.error("Timeout downloading %s: %s", link, str(e))
                     data["status"] = "FAIL"
-                except ScraperExceptions.DownloadError as e:
+                except DownloadError as e:
                     logger.error("Download failed for %s: %s", link, str(e))
                     data["status"] = "FAIL"
-                except ScraperExceptions.VideoProcessingError as e:
+                except ProcessingError as e:
                     logger.error("Video processing failed for %s: %s", link, str(e))
                     data["status"] = "FAIL"
                 except Exception as e:
@@ -478,7 +478,7 @@ def _combine_categorize_pdfs() -> None:
 
     except Exception as e:
         logger.exception("Failed to combine and categorize PDFs: %s", str(e))
-        raise ScraperExceptions.PDFProcessingError(f"PDF processing failed: {str(e)}")
+        raise ProcessingError(f"PDF processing failed: {str(e)}")
 
 
 def process_transcripts() -> None:
@@ -495,7 +495,7 @@ def process_transcripts() -> None:
                     combine_transcript(transcript_doc)
                 except Exception as e:
                     data["status"] = "FAIL"
-                    raise TranscriptionExceptions.VideoProcessingError(f"Transcription processing failed: {str(e)}")
+                    raise ProcessingError(f"Transcription processing failed: {str(e)}")
     
         data["status"] = "SUCC"        
     _save_urls(pdf_dict)
@@ -545,7 +545,7 @@ def apply_ocr(doc: pymupdf.Document) -> pymupdf.Document:
 
     except Exception as e:
         logger.error(f"Error during OCR: {e}")
-        raise ScraperExceptions.PDFProcessingError(f"OCR processing failed: {str(e)}")
+        raise ProcessingError(f"OCR processing failed: {str(e)}")
     finally:
         #Clean up temp files
         if temp_input.exists():
@@ -562,7 +562,7 @@ def remove_pdf(pdf_key:str, delete_from_json:bool = False) -> None:
     if pdf_key not in pdf_dict:
         raise KeyError(f"PDF key '{pdf_key}' not found in URL database")
     if not pdf_dict[pdf_key].get("master_pdf"):
-        raise ScraperExceptions.PDFNotFoundError(f"No master PDF associated with key '{pdf_key}'")
+        raise ResourceNotFoundError(f"No master PDF associated with key '{pdf_key}'")
     
     data = pdf_dict[pdf_key]
     if data.get("master_pdf"):
@@ -595,13 +595,13 @@ def remove_pdf(pdf_key:str, delete_from_json:bool = False) -> None:
             master_doc.save(str(data["master_pdf"]), incremental=True, encryption=0)
 
         except ValueError as e:
-            raise ScraperExceptions.PageDeleteError(f"Invalid page range: {start_page} to {end_page}")
+            raise ValidationError(f"Invalid page range: {start_page} to {end_page}")
         except RuntimeError as e:
             raise RuntimeError(f"Failed to delete pages: {str(e)}")
         except TypeError as e:
             raise TypeError(f"Unexpected error: {str(e)}")
         except Exception as e:
-            raise ScraperExceptions.PageDeleteError(f"Unexpected error: {str(e)}")
+            raise ProcessingError(f"Unexpected error: {str(e)}")
         finally:
             master_doc.close()
 
@@ -651,7 +651,7 @@ def _add_url(saved_links:dict, raw_url:str, status:str = "PEND", category:str = 
     """Adds a new URL to the saved_links dictionary with its status, category, and file type."""
     status = status.upper()
     if status not in {"PEND", "FAIL", "SUCC"}:
-        raise ScraperExceptions.StatusError("Status must be PEND, FAIL or SUCC")
+        raise ValidationError("Status must be PEND, FAIL or SUCC")
     url = _normalize_url(raw_url)
     saved_links[url] = {
         "status": status,
@@ -725,7 +725,7 @@ def run_script():
         process_transcripts()
     except Exception as e:
         logger.exception("An error occurred while running the script: %s", str(e))
-        raise ScraperExceptions.PDFScraperError(f"Script execution failed: {str(e)}")
+        raise ScraperError(f"Script execution failed: {str(e)}")
     finally:
         close_driver()
 
