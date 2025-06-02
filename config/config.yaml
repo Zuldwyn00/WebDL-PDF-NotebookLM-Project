@@ -6,13 +6,13 @@ website:
 
 # Directory Configuration
 directories:
-  base: "PDFs"  # Relative to script directory
+  base: "data/PDFs"  # Relative to script directory
   master: "master"  # Relative to base directory
   transcript_master: "transcript_master"  # Relative to base directory
   
 # File Configuration
 files:
-  urls: "urls.json"  # Relative to script directory
+  urls: "data/urls.json"  # Relative to script directory
   sensitive: "sensitive_config.yaml"  # File containing sensitive information
   updated_categories: "updated_categories.txt"  # File to track updated categories
 

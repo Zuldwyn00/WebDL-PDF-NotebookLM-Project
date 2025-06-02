@@ -9,7 +9,7 @@ Test Classes:
 """
 
 import pytest
-from pdf_scraper import _normalize_url, _add_url, ScraperExceptions, apply_ocr
+from pdf_scraper import _normalize_url, _add_url, ScraperExceptions, apply_ocr, remove_pdf, _load_urls
 import pymupdf
 
 
@@ -172,3 +172,118 @@ class TestOCR:
         Then: The document should be OCRed and returned
         """
         return
+
+
+class TestRemovePDF:
+    """Test cases for the remove_pdf function.
+    
+    The remove_pdf function should:
+    - Delete a PDF from the master_file it is found in by getting the start and end page numbers of the PDF in the dict based on the given key.
+    """
+    def test_delete_pdf_in_safe_page_range(self):
+        """Test the remove_pdf function using a safe pdf_key
+        
+        Given: A PDF that is known have a pdf after it so that the page range doesnt go out of bounds
+        When: remove_pdf is called with the key of the PDF
+        Then: The PDF should be deleted from the master_file and the page range should be updated in the dictionary - still to be added
+        
+        Run with: python -m pytest tests/test_scraper.py::TestRemovePDF::test_delete_pdf_in_safe_page_range -v
+        """
+        pdf_dict = _load_urls()
+        input_key = "https://smartadvocate.na4.teamsupport.com/knowledgeBase/21938490"
+
+        with pymupdf.open(pdf_dict[input_key]["master_pdf"]) as master_doc:
+            starting_total_master_pages = master_doc.page_count
+
+        with pymupdf.open(pdf_dict[input_key]["path"]) as input_doc:
+            expected_total_master_pages = starting_total_master_pages - input_doc.page_count
+
+        remove_pdf(input_key)
+
+        with pymupdf.open(pdf_dict[input_key]["master_pdf"]) as master_doc:
+            actual_total_master_pages = master_doc.page_count
+
+        assert actual_total_master_pages == expected_total_master_pages
+
+    def test_delete_last_pdf_in_dict(self):
+        """Test the remove_pdf function using an unsafe pdf_key where it is the last pdf in the dictionary and the end of the master_file so there is
+            no pdf after it to use as a page range reference. Error testing for if there is a pdf after but from different master_file is seperate test.
+        
+        Given: A PDF that is key that is at the end of the master_file, known to have no pdf after it so that the page range goes out of bounds
+        When: remove_pdf is called with the key of the PDF
+        Then: The PDF should be deleted from the master_file and should handle the page not having a next pdf
+        
+        Run with: python -m pytest tests/test_scraper.py::TestRemovePDF::test_delete_last_pdf_in_dict -v
+        """
+        pdf_dict = _load_urls()
+        input_key = "https://smartadvocate.na4.teamsupport.com/knowledgebase/21992632"
+
+        with pymupdf.open(pdf_dict[input_key]["master_pdf"]) as master_doc:
+            starting_total_master_pages = master_doc.page_count
+
+        with pymupdf.open(pdf_dict[input_key]["path"]) as input_doc:
+            expected_total_master_pages = starting_total_master_pages - input_doc.page_count
+
+        remove_pdf(input_key)
+
+        with pymupdf.open(pdf_dict[input_key]["master_pdf"]) as master_doc:
+            actual_total_master_pages = master_doc.page_count
+
+        assert actual_total_master_pages == expected_total_master_pages
+
+
+    def test_delete_pdf_where_next_dict_item_is_from_different_master_file(self):
+        """Test the remove_pdf function where the next dict item is from a different master_file
+
+        Given: A PDF that is key that where the next dict item is from a different master_file
+        When: remove_pdf is called with the key of the PDF
+        Then: The PDF should be deleted from the master_file and should should not delete from the other master_file or use the wrong page range
+
+        Run with: python -m pytest tests/test_scraper.py::TestRemovePDF::test_delete_pdf_where_next_dict_item_is_from_different_master_file -v
+        """
+        pdf_dict = _load_urls()
+        input_key = "https://smartadvocate.na4.teamsupport.com/knowledgeBase/21691968"
+
+        with pymupdf.open(pdf_dict[input_key]["master_pdf"]) as master_doc:
+            starting_total_master_pages = master_doc.page_count
+
+        with pymupdf.open(pdf_dict[input_key]["path"]) as input_doc:
+            expected_total_master_pages = starting_total_master_pages - input_doc.page_count
+
+        remove_pdf(input_key)
+
+        with pymupdf.open(pdf_dict[input_key]["master_pdf"]) as master_doc:
+            actual_total_master_pages = master_doc.page_count
+
+        assert actual_total_master_pages == expected_total_master_pages
+
+        
+    def test_delete_pdf_where_pdfkey_is_not_in_dictionary(self):
+        """Test the remove_pdf function where the given pdf_key is not in the dictionary
+
+        Given: A pdf_key that is not in the dictionary
+        When: remove_pdf is called with the key of the PDF
+        Then: The function should raise a PDFNotFoundError
+
+        Run with: python -m pytest tests/test_scraper.py::TestRemovePDF::test_delete_pdf_where_pdfkey_is_not_in_dictionary -v
+        """
+        pdf_dict = _load_urls()
+        input_key = "https://smartadvocate.na4.teamsupport.com/knowledgebase/99999999"
+
+        with pytest.raises(KeyError):
+            remove_pdf(input_key)
+
+    def test_delete_pdf_where_master_file_is_empty(self):
+        """Test the remove_pdf function where the master_file is empty
+
+        Given: A master_file that is empty
+        When: remove_pdf is called with the key of the PDF
+        Then: The function should raise a PDFNotFoundError
+
+        Run with: python -m pytest tests/test_scraper.py::TestRemovePDF::test_delete_pdf_where_master_file_is_empty -v
+        """
+        pdf_dict = _load_urls()
+        input_key = "https://smartadvocate.na4.teamsupport.com/knowledgebase/21992632"
+
+        with pytest.raises(ScraperExceptions.PDFNotFoundError):
+            remove_pdf(input_key)

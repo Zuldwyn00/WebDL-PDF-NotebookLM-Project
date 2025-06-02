@@ -36,13 +36,20 @@ class ScraperExceptions:
         pass
     
     class ProcessingError(PDFScraperError):
-        """Raised when PDF processing fails"""
+        """Raised when PDF processing/editing fails"""
         pass
     
     class PageUpdateError(ProcessingError):
         """Raised when page update fails"""
         pass
 
+    class PageDeleteError(ProcessingError):
+        """Raised when page deletion fails"""
+        pass
+
+    class PDFNotFoundError(PDFScraperError):
+        """Raised when a PDF key is not found in the dictionary or has no associated master PDF"""
+        pass
 
 class TranscriptionExceptions:
     """Collection of custom exceptions for the Transcription."""
