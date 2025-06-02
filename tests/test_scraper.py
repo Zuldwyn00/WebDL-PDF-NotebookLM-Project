@@ -271,7 +271,7 @@ class TestRemovePDF:
         with pytest.raises(KeyError):
             remove_pdf(input_key)
 
-    def test_delete_pdf_where_master_file_is_empty(self):
+    def test_delete_pdf_where_master_file_doesnt_exist(self):
         """Test the remove_pdf function where the master_file is empty
 
         Given: A master_file that is empty
