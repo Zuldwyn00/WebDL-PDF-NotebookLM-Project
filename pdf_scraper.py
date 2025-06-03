@@ -65,46 +65,8 @@ from utils import (
 config = load_config()
 logger = setup_logger(__name__, config)
 
-
-# ─── CUSTOM LOGGING HANDLER ────────────────────────────────────────────────────────────────
-class TqdmLoggingHandler(logging.Handler):
-    def emit(self, record):
-        try:
-            msg = self.format(record)
-            # Clear the current line and write the log message
-            tqdm.write(msg, end="\n")
-            self.flush()
-        except Exception:
-            self.handleError(record)
-
-
-# ─── LOGGER SETUP ────────────────────────────────────────────────────────────────
-# Create console handler with custom formatter
-console_handler = TqdmLoggingHandler()
-formatter = logging.Formatter(
-    "%(asctime)s %(levelname)-8s %(name)s:%(lineno)d %(message)s"
-)
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
-
-# Create file handler for logging to a file
-log_dir = Path(__file__).resolve().parent / "logs"
-log_dir.mkdir(exist_ok=True)
-log_file = log_dir / f"pdf_scraper_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
-file_handler = logging.FileHandler(log_file)
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
-
-# Remove any existing handlers to avoid duplicate output
-for handler in logger.handlers[:]:
-    if not isinstance(handler, TqdmLoggingHandler) and not isinstance(
-        handler, logging.FileHandler
-    ):
-        logger.removeHandler(handler)
-
 # Log startup information
 logger.info(f"PDF Scraper v{__version__} starting up")
-logger.info(f"Log file created at: {log_file}")
 
 # ─── GLOBAL VARIABLES ────────────────────────────────────────────────────────────────
 GLOBAL_DRIVER = None  # initialize driver
