@@ -331,7 +331,7 @@ def download_pdfs(saved_links: dict) -> dict:
                                         video_url
                                     )  # Add each video URL to the list
                                     # process mp4 types seperately after combining and categorizing PDFs to retain link to master_pdf,
-                                    # process_transcripts in run_script
+                                    # _process_transcripts in run_script
 
                     except Exception as e:
                         logger.debug(
@@ -588,7 +588,7 @@ def _combine_categorize_pdfs() -> None:
         raise ProcessingError(f"PDF processing failed: {str(e)}")
 
 
-def process_transcripts() -> None:
+def _process_transcripts() -> None:
     """Processes video transcripts and combines them into master transcript PDFs.
 
     This function:
@@ -917,7 +917,7 @@ def run_script():
         print(f"INFO: Links found - {len(all_links)}")
         download_pdfs(all_links)
         _combine_categorize_pdfs()
-        process_transcripts()
+        _process_transcripts()
     except Exception as e:
         logger.exception("An error occurred while running the script: %s", str(e))
         raise ScraperError(f"Script execution failed: {str(e)}")
