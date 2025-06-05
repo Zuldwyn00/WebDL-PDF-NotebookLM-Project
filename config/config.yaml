@@ -6,7 +6,7 @@ website:
 
 # Directory Configuration
 directories:
-  base: "data/PDFs"  # Relative to script directory
+  base: "PDFs"  # Relative to script directory
   master: "master"  # Relative to base directory
   transcript_master: "transcript_master"  # Relative to base directory
   
