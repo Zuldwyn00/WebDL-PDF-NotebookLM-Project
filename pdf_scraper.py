@@ -575,6 +575,7 @@ def _combine_categorize_pdfs() -> None:
         logger.exception("Failed to combine and categorize PDFs: %s", str(e))
         raise ProcessingError(f"PDF processing failed: {str(e)}")
 
+
 def _process_transcripts() -> None:
     """Processes video transcripts and combines them into master transcript PDFs.
 
@@ -625,6 +626,7 @@ def _process_transcripts() -> None:
     
     _save_urls(pdf_dict)
     logger.info("Completed processing all video transcripts")
+
 
 def apply_ocr(doc: pymupdf.Document) -> pymupdf.Document:
     """OCR a PyMuPDF Document object and return the OCRed version with searchable text.
@@ -930,9 +932,7 @@ def main():
 
     Runs the main scraping process and handles any top-level exceptions.
     """
-    #run_script()
-    refactored = refactordict()
-    _save_urls(refactored)
+    run_script()
 
 
 if __name__ == "__main__":
