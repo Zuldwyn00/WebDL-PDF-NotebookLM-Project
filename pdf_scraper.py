@@ -210,10 +210,6 @@ def get_links(website_url: str) -> dict:
                 ).text.strip()
                 logger.info("Processing category: %s", category_name)
 
-                # Initialize category in saved_links if it doesn't exist
-                if category_name not in saved_links:
-                    saved_links[category_name] = {}
-
                 # Get all article links from this category's subcategories
                 article_elements = driver.find_elements(
                     By.CSS_SELECTOR, "ul.article-links a"
@@ -224,14 +220,9 @@ def get_links(website_url: str) -> dict:
                         if not href or "subcategory" in href:
                             continue
 
-                        # Add new links or update existing ones
-                        if href not in saved_links[category_name]:
-                            saved_links[category_name][href] = {
-                                "type": "pdf",
-                                "master_pdf": None,
-                                "page_number": None,
-                                "status": "PEND"
-                            }
+                        # Add new links using _add_url
+                        if href not in saved_links.get(category_name, {}):
+                            _add_url(saved_links, category_name, href, status="PEND", file_type="pdf")
 
                     except StaleElementReferenceException:
                         logger.debug("Stale article element, skipping...")
@@ -320,7 +311,7 @@ def download_pdfs(saved_links: dict) -> dict:
             for link, data in urls.items():
                 if data["status"] not in {"SUCC"}:
                     try:
-                        logger.info(f"Processing: {link}")
+                        logger.info(f"Processing {category}: {link}")
                         driver.get(link)
                         wait_for_page_ready(driver)
 
@@ -331,15 +322,14 @@ def download_pdfs(saved_links: dict) -> dict:
                                 By.CSS_SELECTOR, "video source"
                             )
                             if video_elements:
+                                # Update type and add video URLs
                                 data["type"] = "mp4"
-                                data["video_urls"] = []  # Initialize list for video URLs
+                                data["video_urls"] = []
                                 for video_source in video_elements:
                                     video_url = video_source.get_attribute("src")
                                     if video_url:
                                         logger.info(f"Found video in {link}: {video_url}")
                                         data["video_urls"].append(video_url)
-                                        # process mp4 types separately after combining and categorizing PDFs
-                                        # to retain link to master_pdf, _process_transcripts in run_script
 
                         except Exception as e:
                             logger.debug(
@@ -454,24 +444,14 @@ def _combine_categorize_pdfs() -> None:
             url_key = "https://" + pdf_path.stem.replace("_", "/")
             
             # Find which category this URL belongs to
-            found = False
             for category, urls in pdf_dict.items():
                 if url_key in urls:
                     pdf_dict[category][url_key]["path"] = pdf_path
-                    found = True
                     break
-            
-            if not found:
-                # Create a default entry with 'Unknown' category
-                if "Unknown" not in pdf_dict:
-                    pdf_dict["Unknown"] = {}
-                pdf_dict["Unknown"][url_key] = {
-                    "type": "pdf",
-                    "master_pdf": None,
-                    "page_number": None,
-                    "status": "SUCC",
-                    "path": pdf_path
-                }
+            else:
+                # Add to Unknown category using _add_url
+                _add_url(pdf_dict, "Unknown", url_key, status="SUCC", file_type="pdf")
+                pdf_dict["Unknown"][url_key]["path"] = pdf_path
 
         # ----------------------------------------------------------------------
         # PROCESS: Process each category and create master PDFs
@@ -645,7 +625,6 @@ def _process_transcripts() -> None:
     
     _save_urls(pdf_dict)
     logger.info("Completed processing all video transcripts")
-
 
 def apply_ocr(doc: pymupdf.Document) -> pymupdf.Document:
     """OCR a PyMuPDF Document object and return the OCRed version with searchable text.
@@ -869,6 +848,7 @@ def _save_urls(saved_links: dict) -> None:
                         "master_pdf": str | None,
                         "page_number": int | None,
                         "status": str
+                        "path": str
                     }
                 }
             }
@@ -918,6 +898,7 @@ def _load_urls() -> dict:
     except FileNotFoundError:
         return {}
 
+
 def run_script():
     """Main function that orchestrates the PDF scraping process.
 
@@ -949,7 +930,9 @@ def main():
 
     Runs the main scraping process and handles any top-level exceptions.
     """
-    run_script()
+    #run_script()
+    refactored = refactordict()
+    _save_urls(refactored)
 
 
 if __name__ == "__main__":
