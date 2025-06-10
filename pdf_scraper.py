@@ -13,10 +13,6 @@ Date: 2025-05-23
 
 # TODO:
 
-# 1) Refactor redundant categorization method in trascribe_video, combine into using existing method in pdf_scraper.py
-# Can check if type is mp4 and if so, categorize video into transcript_master
-# Might have downside of making data not as readable to NotebookLM AI so probably best to keep as is
-
 # 2) Potentially refactor to OOP, but not necessary here since code is not too complex, could at least refactor transcribe_video to be OOP to be a little cleaner
 
 # 3) Docker Containerization, but again not necessary here since this is in-house personal code.
@@ -44,7 +40,6 @@ from itertools import dropwhile
 import os, base64
 import json
 import pymupdf, ocrmypdf
-import logging
 
 # Local imports
 from transcribe_video import transcribe_video, combine_transcript
@@ -732,7 +727,6 @@ def remove_pdf(pdf_key: str, delete_from_json: bool = False) -> None:
         try:
             master_doc = pymupdf.open(str(found_data["master_pdf"]))
             end_page = master_doc.page_count - 1
-            
             # Find the next PDF in the same master file
             current_index = next(i for i, (url, _) in enumerate(master_pdf_urls) if url == pdf_key)
             if current_index < len(master_pdf_urls) - 1:

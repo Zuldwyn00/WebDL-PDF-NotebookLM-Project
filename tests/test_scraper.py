@@ -1,3 +1,5 @@
+from unicodedata import category
+from more_itertools import first
 import pytest
 from pdf_scraper import (
     _normalize_url,
@@ -6,7 +8,17 @@ from pdf_scraper import (
     _load_urls,
 )
 from utils import ValidationError, ResourceNotFoundError
+from database import init_db, get_db_session, add_db_category, add_db_masterpdf, add_db_pdf, get_db_category, Category, MasterPDF, PDFs
 import pymupdf
+
+# ─── TEST FIXTURES ────────────────────────────────────────────────────────────────
+@pytest.fixture(scope="function")
+def test_db(givenengine = ):
+    """Fixture to create a fresh in-memory database for each test."""
+    # Initialize in-memory database
+    init_db(db_path=":memory:", db_type="sqlite")
+    yield
+    # Cleanup happens automatically when the in-memory database is closed
 
 
 class TestNormalizeURL:
@@ -288,3 +300,62 @@ class TestRemovePDF:
 
         with pytest.raises(ResourceNotFoundError):
             remove_pdf(input_key)
+
+
+class TestDB:
+    """
+    Test cases for the databases functions
+    """
+
+    def test_get_db_category_where_category_doesnt_exist_already(self, test_db):
+        """Test that add_db_category correctly adds a new category to the database.
+
+        Given: A database and a new category name
+        When: add_db_category is called with the category name
+        Then: The category should be added to the database and return True
+             If the category already exists, it should return False
+
+        Run with: python -m pytest tests/test_scraper.py::TestDB::test_get_db_category_where_category_doesnt_exist_already -v
+        """
+        expected_category = "Knowledge_Base"
+        
+        # Use a session context manager to keep the session open while accessing the category
+        with get_db_session(test_db) as session:
+            add_db_category(name="Knowledge_Base")
+            returned_category = session.query(Category).filter(Category.name == "Knowledge_Base").first()
+            assert returned_category.name == expected_category
+
+    def test_add_db_category_where_category_already_exists(self, test_db):
+        """Test that add_db_category returns False when category already exists.
+
+        Given: A database with an existing category
+        When: add_db_category is called with the same category name
+        Then: The function should return False
+
+        Run with: python -m pytest tests/test_scraper.py::TestDB::test_add_db_category_where_category_already_exists -v
+        """
+        
+        category_name = "Test_Category"
+        # First add the category
+        with get_db_session(test_db) as session:
+            first_result = add_db_category(name=category_name)
+            assert first_result is True
+
+            category_count = session.query(Category).filter(Category.name == category_name).count()
+            assert category_count == 1
+
+            # Try to add it again
+            second_result = add_db_category(name=category_name)
+            assert second_result is False
+
+            category_count = session.query(Category).filter(Category.name == category_name).count()
+            assert category_count == 1
+            print(f"test1 {first_result} : test2 {second_result}")
+
+
+
+
+
+        
+
+
