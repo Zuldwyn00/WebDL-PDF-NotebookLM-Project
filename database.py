@@ -5,7 +5,7 @@
 from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Union
 from utils import ResourceNotFoundError, load_config, setup_logger
 from sqlalchemy.orm import Session
 from contextlib import contextmanager
@@ -28,8 +28,10 @@ class Category(Base):
     __tablename__ = "categories"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+
     name: Mapped[str] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
+
     updated_at: Mapped[datetime] = mapped_column(default=datetime.now, onupdate=datetime.now)
 
     master_pdfs: Mapped[List["MasterPDF"]] = relationship(back_populates="category")
@@ -40,8 +42,10 @@ class MasterPDF(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
+
     name: Mapped[str] = mapped_column(nullable=False)
     file_path: Mapped[str] = mapped_column(nullable=False)
+
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.now, onupdate=datetime.now)
 
@@ -54,51 +58,75 @@ class PDFs(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     master_id: Mapped[int] = mapped_column(ForeignKey("master_pdfs.id"), nullable=False)
+
     name: Mapped[Optional[str]] = mapped_column()
     file_path: Mapped[str] = mapped_column()
     master_page_number: Mapped[int] = mapped_column(nullable=False)
     file_type: Mapped[Optional[str]] = mapped_column()
+
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.now, onupdate=datetime.now)
 
     master_pdf: Mapped["MasterPDF"] = relationship(back_populates="pdfs")
 
 
-def init_db(db_path: str = "pdf_scraper.db", db_type: str = "sqlite" , givenengine=None):
+def init_db(db_type: str = "sqlite", db_path: str = "pdf_scraper.db"):
     """
-    Initialize the database engine and session factory.
-    Should be called once at application startup.
+    Initialize the database engine and session factory for the application.
+    
+    This function should be called once at application startup to set up the database
+    connection and create the session factory. It creates a global engine and session
+    factory that will be used throughout the application.
+    
+    Args:
+        db_type (str): Type of database to use. Currently only supports "sqlite".
+                       Defaults to "sqlite".
+        db_path (str): Path to the SQLite database file. Defaults to "pdf_scraper.db".
+    
+    Returns:
+        Engine: The created SQLAlchemy engine instance.
+    
+    Raises:
+        ValueError: If db_type is not "sqlite", as other database types are not supported.
+    
+    Note:
+        This function modifies global variables 'engine' and 'SessionFactory'.
+        It should only be called once at application startup.
     """
-    if givenengine is None:
-        global engine, SessionFactory
-    else:
-        global SessionFactory
-        engine = givenengine
-
+    global engine, SessionFactory
     
     if db_type != "sqlite":
         raise ValueError(f"Unsupported database type: {db_type}. Only 'sqlite' is currently supported.")
 
-    # Create engine at module level
     engine = create_engine(f"{db_type}:///{db_path}", echo=True)
     Base.metadata.create_all(engine)
+    #add global session as default, get_db_session() can be used with an optional engine param to make a new session with that engine
     SessionFactory = sessionmaker(bind=engine)
     
     return engine
 
 # ─── SESSION MANAGEMENT ────────────────────────────────────────────────────────────────
 @contextmanager
-def get_db_session():
+def get_db_session(engine=None):
     """
     Context manager for database sessions.
-    Uses the global session factory.
+    Uses the global session factory or a provided engine.
+    
+    Args:
+        engine: Optional SQLAlchemy engine. If provided, creates a new session with this engine.
+               If None, uses the global session factory.
     """
-    session = SessionFactory()
+    if engine:
+        session = sessionmaker(bind=engine)()
+    else:
+        session = SessionFactory()
+        
     try:
         yield session
         session.commit()
     except Exception:
         session.rollback()
+        raise
     finally:
         session.close()
 
@@ -113,6 +141,9 @@ def add_db_category(name:str):
     Returns:
         bool: True if category was added, False if it already existed
     """
+    if not name or not name.strip():
+            raise ValueError("Category name cannot be empty.")
+    
     with get_db_session() as session:
         category = session.query(Category).filter(Category.name == name).first()
         if category:
@@ -123,12 +154,12 @@ def add_db_category(name:str):
         session.add(new_category)
         return True
     
-def get_db_category(name: str) -> Category:
+def get_db_category(value: str | int) -> Category:
     """
     Get a category from the database by name.
     
     Args:
-        name (str): The name of the category to retrieve
+        value (str | int): The value can either be the name of the category, or the ID of the category
         
     Returns:
         Category: The category object if found
@@ -136,16 +167,19 @@ def get_db_category(name: str) -> Category:
     Raises:
         ResourceNotFoundError: If the category does not exist
     """
-    if not name or not name.strip():
-        raise ValueError("Category name cannot be empty.")
+    
+    if not value:
+        raise ValueError("Value cannot be undefined.")
 
     with get_db_session() as session:
         logger.debug("Attempting to retrieve category:")
-        category = session.query(Category).filter(Category.name == name).first()
+
+        column = Category.id if isinstance(value, int) else (Category.name if value.strip() else ValueError("Value cannot be undefined."))
+        category = session.query(Category).filter(column == value).first()
         if category:
             return category
         
-        raise ResourceNotFoundError(f"Category '{name}' not found.")
+        raise ResourceNotFoundError(f"Category '{value}' not found.")
     
 def add_db_masterpdf(name:str, category_name:str, file_path:str):
     with get_db_session() as session:
@@ -166,6 +200,8 @@ def add_db_masterpdf(name:str, category_name:str, file_path:str):
         )
         session.add(new_master_pdf)
         return True
+
+#def get_db_masterpdf()
 
 def add_db_pdf(name: str, master_pdf_name: str, file_path: str, master_page_number: int, file_type: Optional[str] = None):
     """

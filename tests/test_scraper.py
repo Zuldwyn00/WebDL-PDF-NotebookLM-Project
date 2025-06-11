@@ -11,14 +11,7 @@ from utils import ValidationError, ResourceNotFoundError
 from database import init_db, get_db_session, add_db_category, add_db_masterpdf, add_db_pdf, get_db_category, Category, MasterPDF, PDFs
 import pymupdf
 
-# ─── TEST FIXTURES ────────────────────────────────────────────────────────────────
-@pytest.fixture(scope="function")
-def test_db(givenengine = ):
-    """Fixture to create a fresh in-memory database for each test."""
-    # Initialize in-memory database
-    init_db(db_path=":memory:", db_type="sqlite")
-    yield
-    # Cleanup happens automatically when the in-memory database is closed
+
 
 
 class TestNormalizeURL:
@@ -306,7 +299,14 @@ class TestDB:
     """
     Test cases for the databases functions
     """
-
+    @pytest.fixture(scope="function")
+    def test_db(self):
+        """Fixture to create a fresh in-memory database for each test."""
+        # Initialize in-memory database
+        engine = init_db(db_path=":memory:", db_type="sqlite")
+        return engine
+        # Cleanup happens automatically when the in-memory database is closed
+        
     def test_get_db_category_where_category_doesnt_exist_already(self, test_db):
         """Test that add_db_category correctly adds a new category to the database.
 
@@ -350,8 +350,21 @@ class TestDB:
 
             category_count = session.query(Category).filter(Category.name == category_name).count()
             assert category_count == 1
-            print(f"test1 {first_result} : test2 {second_result}")
 
+    def test_add_db_category_where_category_is_empty(self, test_db):
+        """Test that add_db_category handles empty category names correctly.
+
+        Given: A database with an existing category
+        When: add_db_category is called with an empty category name (whitespace)
+        Then: The function should return False and not add the empty category
+
+        Run with: python -m pytest tests/test_scraper.py::TestDB::test_add_db_category_where_category_is_empty -v
+        """
+        category_name = " "
+
+        with get_db_session(test_db) as session:
+            with pytest.raises(ValueError):
+                add_db_category(category_name)
 
 
 
