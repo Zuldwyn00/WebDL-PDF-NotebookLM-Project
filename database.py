@@ -1,15 +1,16 @@
 #TODO
 #Add check to make sure page_number is not in already used range for the add_pdf() function
+#Add method to reorganize PDF if user chooses to choose a target_page for the _assign_page_number() function
 
-
-from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
 from datetime import datetime
-from typing import Optional, List, Union
+from typing import Optional, List
 from utils import ResourceNotFoundError, load_config, setup_logger
 from sqlalchemy.orm import Session
 from contextlib import contextmanager
 from sqlalchemy.orm import sessionmaker
+from functools import wraps
 
 # ─── LOGGER & CONFIG ────────────────────────────────────────────────────────────────
 config = load_config()
@@ -129,37 +130,40 @@ def get_db_session(engine=None):
     finally:
         session.close()
 
+def with_session(func):
+    """
+    A decorator to provide a SQLAlchemy session to database functions.
 
-def add_db_category(name:str):
-    """
-    Add a new category to the database if it doesn't already exist.
+    This decorator inspects the keyword arguments of the function it wraps.
+    If a `session` keyword argument is already provided and is not None, it
+    uses that session. Otherwise, it creates a new session using the
+    `get_db_session` context manager and injects it into the keyword
+    arguments as `session`.
+
+    This pattern ensures that database functions can either participate in an
+    existing transaction or manage their own, without repetitive boilerplate.
     
-    Args:
-        name (str): The name of the category to add
-        
-    Returns:
-        bool: True if category was added, False if it already existed
+    The wrapped function must accept `session` as a keyword argument.
     """
-    if not name or not name.strip():
-            raise ValueError("Category name cannot be empty.")
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        if 'session' in kwargs and kwargs.get('session') is not None:
+            return func(*args, **kwargs)
+        else:
+            with get_db_session() as new_session:
+                kwargs['session'] = new_session
+                return func(*args, **kwargs)
     
-    with get_db_session() as session:
-        category = session.query(Category).filter(Category.name == name).first()
-        if category:
-            logger.info("Category already exists, cannot add.")
-            return False
-        
-        new_category = Category(name=name)
-        session.add(new_category)
-        return True
+    return wrapper
+
     
 # ─── UTILITY FUNCTIONS ────────────────────────────────────────────────────────────────
-def _validate_lookup_value(value: str | int) -> None:
+def _validate_lookup_value(value) -> None:
     """
     Validate that a lookup value is not empty or undefined.
 
     Args:
-        value (str | int): The value to validate.
+        value: The value to validate.
 
     Raises:
         ValueError: If the value is empty or undefined.
@@ -195,14 +199,76 @@ def _validate_page_range(master_pdf_id: int, page_number: int) -> bool:
     return page_number == highest_page + 1
 
 def _assign_page_number(master_pdf_id: int, target_page: Optional[int] = None) -> int:
-    master_pdf = get_db_masterpdf(master_pdf_id)
+    """
+    """
 
-    pdfs = sorted(master_pdf.PDF, key=lambda x: x.master_page_number, reverse=True)
+    master_pdf = get_db_masterpdf(master_pdf_id)
+    existing_pdfs = sorted(master_pdf.PDF, key=lambda x: x.master_page_number, reverse=True)
+    existing_page_numbers = [p.master_page_number for p in existing_pdfs]
+    
+    highest_page = max(existing_page_numbers)
+
+    if not existing_pdfs:
+        return 0
+    if target_page is None:
+        return highest_page + 1
+    if target_page > highest_page:
+        logger.info(f"Target page '{target_page}' creates a gap"
+                    f"Setting as next available page at '{highest_page + 1}'")
+        return highest_page + 1
+
+    #check if target_page is within the already existing range of pages
+    if existing_page_numbers and min(existing_page_numbers) <= target_page <= highest_page:
+        logger.info(f"Page number {target_page} is in used range already. Shifting subsequent pages.")
+        previous_page = next((page for page in existing_page_numbers if page < target_page), None)
+        next_page = next((page for page in reversed(existing_page_numbers) if page > target_page), None)
+
+        with get_db_session() as session:
+            pdfs_to_shift = (
+                session.query(PDF)
+                .filter(PDF.master_id == master_pdf_id,
+                        PDF.master_page_number > target_page
+                        )
+                .order_by(PDF.master_page_number.desc())
+                .all
+            )
+
+
+        #return page, and call insert_pages() for adding page
+
+
     
 
 
 # ─── DATABASE OPERATIONS ────────────────────────────────────────────────────────────────
-def get_db_category(value: str | int) -> Category:
+
+@with_session
+def add_db_category(name:str, session: Session) -> bool:
+    """
+    Add a new category to the database if it doesn't already exist.
+    
+    Args:
+        name (str): The name of the category to add
+        session (Optional[Session]): An existing SQLAlchemy session. If provided,
+            the operation will be performed within that session. If None, a new
+            session is created.
+        
+    Returns:
+        bool: True if category was added, False if it already existed
+    """
+    if not name or not name.strip():
+            raise ValueError("Category name cannot be empty.")
+    
+    category = session.query(Category).filter(Category.name == name).first()
+    if category:
+        logger.info("Category already exists, cannot add.")
+        return False
+    new_category = Category(name=name)
+    session.add(new_category)
+    return True
+
+@with_session
+def get_db_category(value: str | int, session: Session) -> Category:
     """
     Get a category from the database by name.
     
@@ -216,40 +282,38 @@ def get_db_category(value: str | int) -> Category:
         ResourceNotFoundError: If the category does not exist
     """
     _validate_lookup_value(value)
+    logger.debug("Attempting to retrieve category:")
 
-    with get_db_session() as session:
-        logger.debug("Attempting to retrieve category:")
+    column = Category.id if isinstance(value, int) else Category.name
+    category = session.query(Category).filter(column == value).first()
+    
+    if category:
+        return category
+    raise ResourceNotFoundError(f"Category '{value}' not found.")
 
-        column = Category.id if isinstance(value, int) else Category.name
-        category = session.query(Category).filter(column == value).first()
-        
-        if category:
-            return category
-        raise ResourceNotFoundError(f"Category '{value}' not found.")
     
 
-def add_db_masterpdf(name:str, category_name:str, file_path:str) -> bool:
-    with get_db_session() as session:
-        #find the category to add to
-        category = session.query(Category).filter(Category.name == category_name).first()
+def add_db_masterpdf(name:str, category_name:str, file_path:str, session: Session) -> bool:
+    #find the category to add to
+    category = session.query(Category).filter(Category.name == category_name).first()
 
-        if not category:
-            logger.error(f"Category '{category_name}' not found, cannot add.")
-            return False
+    if not category:
+        logger.error(f"Category '{category_name}' not found, cannot add.")
+        return False
 
-        if session.query(MasterPDF).filter(MasterPDF.name == name).first():
-            logger.info(f"Master PDF '{name}' already exists, cannot add.")
-            return False
+    if session.query(MasterPDF).filter(MasterPDF.name == name).first():
+        logger.info(f"Master PDF '{name}' already exists, cannot add.")
+        return False
 
-        new_master_pdf = MasterPDF(
-            name=name,
-            category_id=category.id,
-            file_path=file_path
-        )
-        session.add(new_master_pdf)
-        return True
+    new_master_pdf = MasterPDF(
+        name=name,
+        category_id=category.id,
+        file_path=file_path
+    )
+    session.add(new_master_pdf)
+    return True
 
-def get_db_masterpdf(value: str | int) -> MasterPDF:
+def get_db_masterpdf(value: str | int, session: Session) -> MasterPDF:
     """
     Get a master PDF from the database by name or ID.
 
@@ -265,22 +329,23 @@ def get_db_masterpdf(value: str | int) -> MasterPDF:
     """
     _validate_lookup_value(value)
     
-    with get_db_session() as session:
-        logger.debug("Attempting to retrieve MasterPDF:")
+    logger.debug("Attempting to retrieve MasterPDF:")
 
-        column = MasterPDF.id if isinstance(value, int) else MasterPDF.name
-        master_pdf = session.query(MasterPDF).filter(column == value).first()
+    column = MasterPDF.id if isinstance(value, int) else MasterPDF.name
+    master_pdf = session.query(MasterPDF).filter(column == value).first()
 
-        if master_pdf:
-            return master_pdf
-        raise ResourceNotFoundError(f"MasterPDF '{value}' not found.")
+    if master_pdf:
+        return master_pdf
+    raise ResourceNotFoundError(f"MasterPDF '{value}' not found.")
+
 
 def add_db_pdf(name: str, 
                master_pdf_value: str | int, 
                file_path: str, 
+               session: Session,
                master_page_number: Optional[int] = None,
-               file_type: Optional[str] = None
-               ) -> bool:
+               file_type: Optional[str] = None,
+                ) -> bool:
     """
     Add a new PDF to the database, associated with a master PDF.
     
@@ -294,26 +359,25 @@ def add_db_pdf(name: str,
     Returns:
         bool: True if PDF was added successfully, False if master PDF doesn't exist
     """
-    with get_db_session() as session:
-
-        column = MasterPDF.id if isinstance(master_pdf_value, int) else MasterPDF.name
-        master_pdf = session.query(MasterPDF).filter(column == master_pdf_value).first()
-        
-        if not master_pdf:
-            logger.error(f"Master PDF '{master_pdf}' does not exist, cannot add PDF.")
-            return False
-            
-        new_pdf = PDF(
-            name=name,
-            master_id=master_pdf.id,
-            file_path=file_path,
-            master_page_number=master_page_number,
-            file_type=file_type
-        )
-        session.add(new_pdf)
-        return True
+    column = MasterPDF.id if isinstance(master_pdf_value, int) else MasterPDF.name
+    master_pdf = session.query(MasterPDF).filter(column == master_pdf_value).first()
     
-def get_db_pdf(value: str | int) -> PDF:
+    if not master_pdf:
+        logger.error(f"Master PDF '{master_pdf}' does not exist, cannot add PDF.")
+        return False
+        
+    new_pdf = PDF(
+        name=name,
+        master_id=master_pdf.id,
+        file_path=file_path,
+        master_page_number=master_page_number,
+        file_type=file_type
+    )
+    session.add(new_pdf)
+    return True
+
+    
+def get_db_pdf(value: str | int, session: Session) -> PDF:
     """
     Get a PDF from the database by name or ID.
 
@@ -329,12 +393,11 @@ def get_db_pdf(value: str | int) -> PDF:
     """
     _validate_lookup_value(value)
 
-    with get_db_session() as session:
-        logger.debug("Attempting to retrieve PDF:")
+    logger.debug("Attempting to retrieve PDF:")
 
-        column = PDF.id if isinstance(value, int) else PDF.name
-        pdf = session.query(PDF).filter(column == value).first()
+    column = PDF.id if isinstance(value, int) else PDF.name
+    pdf = session.query(PDF).filter(column == value).first()
 
-        if pdf:
-            return pdf
-        raise ResourceNotFoundError(f"PDF '{value}' not found.")
+    if pdf:
+        return pdf
+    raise ResourceNotFoundError(f"PDF '{value}' not found.")
