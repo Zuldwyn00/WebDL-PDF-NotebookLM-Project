@@ -1,8 +1,17 @@
-#TODO
-#Add check to make sure page_number is not in already used range for the add_pdf() function
-#Add method to reorganize PDF if user chooses to choose a target_page for the _assign_page_number() function
+# TODO
+# Add check to make sure page_number is not in already used range for the add_pdf() function
+# Add method to reorganize PDF if user chooses to choose a target_page for the _assign_page_number() function
 
-from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, ForeignKey
+from sqlalchemy import (
+    create_engine,
+    text,
+    MetaData,
+    Table,
+    Column,
+    Integer,
+    String,
+    ForeignKey,
+)
 from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
 from datetime import datetime
 from typing import Optional, List
@@ -21,8 +30,10 @@ logger = setup_logger(__name__, config, level="DEBUG")
 engine = None
 SessionFactory = None
 
+
 class Base(DeclarativeBase):
     pass
+
 
 class Category(Base):
     __tablename__ = "categories"
@@ -32,7 +43,9 @@ class Category(Base):
     name: Mapped[str] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
 
-    updated_at: Mapped[datetime] = mapped_column(default=datetime.now, onupdate=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(
+        default=datetime.now, onupdate=datetime.now
+    )
 
     master_PDF: Mapped[List["MasterPDF"]] = relationship(back_populates="category")
 
@@ -41,13 +54,17 @@ class MasterPDF(Base):
     __tablename__ = "master_PDF"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("categories.id"), nullable=False
+    )
 
     name: Mapped[str] = mapped_column(nullable=False)
     file_path: Mapped[str] = mapped_column(nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
-    updated_at: Mapped[datetime] = mapped_column(default=datetime.now, onupdate=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(
+        default=datetime.now, onupdate=datetime.now
+    )
 
     category: Mapped["Category"] = relationship(back_populates="master_PDF")
     PDF: Mapped[List["PDF"]] = relationship(back_populates="master_pdf")
@@ -65,7 +82,9 @@ class PDF(Base):
     file_type: Mapped[Optional[str]] = mapped_column()
 
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
-    updated_at: Mapped[datetime] = mapped_column(default=datetime.now, onupdate=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(
+        default=datetime.now, onupdate=datetime.now
+    )
 
     master_pdf: Mapped["MasterPDF"] = relationship(back_populates="PDF")
 
@@ -73,37 +92,40 @@ class PDF(Base):
 def init_db(db_type: str = "sqlite", db_path: str = "pdf_scraper.db"):
     """
     Initialize the database engine and session factory for the application.
-    
+
     This function should be called once at application startup to set up the database
     connection and create the session factory. It creates a global engine and session
     factory that will be used throughout the application.
-    
+
     Args:
         db_type (str): Type of database to use. Currently only supports "sqlite".
                        Defaults to "sqlite".
         db_path (str): Path to the SQLite database file. Defaults to "pdf_scraper.db".
-    
+
     Returns:
         Engine: The created SQLAlchemy engine instance.
-    
+
     Raises:
         ValueError: If db_type is not "sqlite", as other database types are not supported.
-    
+
     Note:
         This function modifies global variables 'engine' and 'SessionFactory'.
         It should only be called once at application startup.
     """
     global engine, SessionFactory
-    
+
     if db_type != "sqlite":
-        raise ValueError(f"Unsupported database type: {db_type}. Only 'sqlite' is currently supported.")
+        raise ValueError(
+            f"Unsupported database type: {db_type}. Only 'sqlite' is currently supported."
+        )
 
     engine = create_engine(f"{db_type}:///{db_path}", echo=True)
     Base.metadata.create_all(engine)
-    #add global session as default, get_db_session() can be used with an optional engine param to make a new session with that engine
+    # add global session as default, get_db_session() can be used with an optional engine param to make a new session with that engine
     SessionFactory = sessionmaker(bind=engine)
-    
+
     return engine
+
 
 # ─── SESSION MANAGEMENT ────────────────────────────────────────────────────────────────
 @contextmanager
@@ -111,7 +133,7 @@ def get_db_session(engine=None):
     """
     Context manager for database sessions.
     Uses the global session factory or a provided engine.
-    
+
     Args:
         engine: Optional SQLAlchemy engine. If provided, creates a new session with this engine.
                If None, uses the global session factory.
@@ -120,7 +142,7 @@ def get_db_session(engine=None):
         session = sessionmaker(bind=engine)()
     else:
         session = SessionFactory()
-        
+
     try:
         yield session
         session.commit()
@@ -129,6 +151,7 @@ def get_db_session(engine=None):
         raise
     finally:
         session.close()
+
 
 def with_session(func):
     """
@@ -142,21 +165,22 @@ def with_session(func):
 
     This pattern ensures that database functions can either participate in an
     existing transaction or manage their own, without repetitive boilerplate.
-    
+
     The wrapped function must accept `session` as a keyword argument.
     """
+
     @wraps(func)
     def wrapper(*args, **kwargs):
-        if 'session' in kwargs and kwargs.get('session') is not None:
+        if "session" in kwargs and kwargs.get("session") is not None:
             return func(*args, **kwargs)
         else:
             with get_db_session() as new_session:
-                kwargs['session'] = new_session
+                kwargs["session"] = new_session
                 return func(*args, **kwargs)
-    
+
     return wrapper
 
-    
+
 # ─── UTILITY FUNCTIONS ────────────────────────────────────────────────────────────────
 def _validate_lookup_value(value) -> None:
     """
@@ -170,7 +194,8 @@ def _validate_lookup_value(value) -> None:
     """
     if not value or (isinstance(value, str) and not value.strip()):
         raise ValueError("Value cannot be empty or undefined.")
-    
+
+
 def _validate_page_range(master_pdf_id: int, page_number: int) -> bool:
     """
     Validates if a given page number is the next sequential page for a master PDF.
@@ -192,20 +217,22 @@ def _validate_page_range(master_pdf_id: int, page_number: int) -> bool:
     master_pdf = get_db_masterpdf(master_pdf_id)
     if not master_pdf:
         return False
-    
+
     # Get the highest page number from the associated PDFs
     highest_page = max((pdf.master_page_number for pdf in master_pdf.PDF), default=0)
-    
+
     return page_number == highest_page + 1
 
+
 def _assign_page_number(master_pdf_id: int, target_page: Optional[int] = None) -> int:
-    """
-    """
+    """ """
 
     master_pdf = get_db_masterpdf(master_pdf_id)
-    existing_pdfs = sorted(master_pdf.PDF, key=lambda x: x.master_page_number, reverse=True)
+    existing_pdfs = sorted(
+        master_pdf.PDF, key=lambda x: x.master_page_number, reverse=True
+    )
     existing_page_numbers = [p.master_page_number for p in existing_pdfs]
-    
+
     highest_page = max(existing_page_numbers)
 
     if not existing_pdfs:
@@ -213,50 +240,60 @@ def _assign_page_number(master_pdf_id: int, target_page: Optional[int] = None) -
     if target_page is None:
         return highest_page + 1
     if target_page > highest_page:
-        logger.info(f"Target page '{target_page}' creates a gap"
-                    f"Setting as next available page at '{highest_page + 1}'")
+        logger.info(
+            f"Target page '{target_page}' creates a gap"
+            f"Setting as next available page at '{highest_page + 1}'"
+        )
         return highest_page + 1
 
-    #check if target_page is within the already existing range of pages
-    if existing_page_numbers and min(existing_page_numbers) <= target_page <= highest_page:
-        logger.info(f"Page number {target_page} is in used range already. Shifting subsequent pages.")
-        previous_page = next((page for page in existing_page_numbers if page < target_page), None)
-        next_page = next((page for page in reversed(existing_page_numbers) if page > target_page), None)
+    # check if target_page is within the already existing range of pages
+    if (
+        existing_page_numbers
+        and min(existing_page_numbers) <= target_page <= highest_page
+    ):
+        logger.info(
+            f"Page number {target_page} is in used range already. Shifting subsequent pages."
+        )
+        previous_page = next(
+            (page for page in existing_page_numbers if page < target_page), None
+        )
+        next_page = next(
+            (page for page in reversed(existing_page_numbers) if page > target_page),
+            None,
+        )
 
         with get_db_session() as session:
             pdfs_to_shift = (
                 session.query(PDF)
-                .filter(PDF.master_id == master_pdf_id,
-                        PDF.master_page_number > target_page
-                        )
+                .filter(
+                    PDF.master_id == master_pdf_id, PDF.master_page_number > target_page
+                )
                 .order_by(PDF.master_page_number.desc())
                 .all
             )
 
+        # return page, and call insert_pages() for adding page
 
-        #return page, and call insert_pages() for adding page
-
-
-    
 
 # ─── DATABASE OPERATIONS ────────────────────────────────────────────────────────────────
 
+
 @with_session
-def add_db_category(name:str, session: Session) -> bool:
+def add_db_category(name: str, session: Session) -> bool:
     """
     Add a new category to the database if it doesn't already exist.
-    
+
     Args:
         name (str): The name of the category to add.
         session (Session): An existing SQLAlchemy session. If not provided, a new session
                            is created by the `@with_session` decorator.
-        
+
     Returns:
         bool: True if category was added, False if it already existed.
     """
     if not name or not name.strip():
-            raise ValueError("Category name cannot be empty.")
-    
+        raise ValueError("Category name cannot be empty.")
+
     category = session.query(Category).filter(Category.name == name).first()
     if category:
         logger.info("Category already exists, cannot add.")
@@ -265,19 +302,20 @@ def add_db_category(name:str, session: Session) -> bool:
     session.add(new_category)
     return True
 
+
 @with_session
 def get_db_category(value: str | int, session: Session) -> Category:
     """
     Get a category from the database by name.
-    
+
     Args:
         value (str | int): The name or ID of the category.
         session (Session): An existing SQLAlchemy session. If not provided, a new session
                            is created by the `@with_session` decorator.
-        
+
     Returns:
         Category: The category object if found.
-        
+
     Raises:
         ResourceNotFoundError: If the category does not exist.
     """
@@ -286,14 +324,16 @@ def get_db_category(value: str | int, session: Session) -> Category:
 
     column = Category.id if isinstance(value, int) else Category.name
     category = session.query(Category).filter(column == value).first()
-    
+
     if category:
         return category
     raise ResourceNotFoundError(f"Category '{value}' not found.")
 
-    
+
 @with_session
-def add_db_masterpdf(name:str, category_name:str, file_path:str, session: Session) -> bool:
+def add_db_masterpdf(
+    name: str, category_name: str, file_path: str, session: Session
+) -> bool:
     """
     Adds a new master PDF to the database.
 
@@ -307,7 +347,7 @@ def add_db_masterpdf(name:str, category_name:str, file_path:str, session: Sessio
     Returns:
         bool: True if the master PDF was added, False otherwise.
     """
-    #find the category to add to
+    # find the category to add to
     category = session.query(Category).filter(Category.name == category_name).first()
 
     if not category:
@@ -318,13 +358,10 @@ def add_db_masterpdf(name:str, category_name:str, file_path:str, session: Sessio
         logger.info(f"Master PDF '{name}' already exists, cannot add.")
         return False
 
-    new_master_pdf = MasterPDF(
-        name=name,
-        category_id=category.id,
-        file_path=file_path
-    )
+    new_master_pdf = MasterPDF(name=name, category_id=category.id, file_path=file_path)
     session.add(new_master_pdf)
     return True
+
 
 @with_session
 def get_db_masterpdf(value: str | int, session: Session) -> MasterPDF:
@@ -344,7 +381,7 @@ def get_db_masterpdf(value: str | int, session: Session) -> MasterPDF:
         ResourceNotFoundError: If the master PDF does not exist.
     """
     _validate_lookup_value(value)
-    
+
     logger.debug("Attempting to retrieve MasterPDF:")
 
     column = MasterPDF.id if isinstance(value, int) else MasterPDF.name
@@ -354,17 +391,19 @@ def get_db_masterpdf(value: str | int, session: Session) -> MasterPDF:
         return master_pdf
     raise ResourceNotFoundError(f"MasterPDF '{value}' not found.")
 
+
 @with_session
-def add_db_pdf(name: str, 
-               master_pdf_value: str | int, 
-               file_path: str, 
-               session: Session,
-               master_page_number: Optional[int] = None,
-               file_type: Optional[str] = None,
-                ) -> bool:
+def add_db_pdf(
+    name: str,
+    master_pdf_value: str | int,
+    file_path: str,
+    session: Session,
+    master_page_number: Optional[int] = None,
+    file_type: Optional[str] = None,
+) -> bool:
     """
     Add a new PDF to the database, associated with a master PDF.
-    
+
     Args:
         name (str): The name of the PDF.
         master_pdf_value (str | int): The name or ID of the master PDF this PDF belongs to.
@@ -373,26 +412,27 @@ def add_db_pdf(name: str,
                            is created by the `@with_session` decorator.
         master_page_number (Optional[int]): The page number in the master PDF.
         file_type (Optional[str]): The type of file (optional).
-        
+
     Returns:
         bool: True if PDF was added successfully, False if master PDF doesn't exist.
     """
     column = MasterPDF.id if isinstance(master_pdf_value, int) else MasterPDF.name
     master_pdf = session.query(MasterPDF).filter(column == master_pdf_value).first()
-    
+
     if not master_pdf:
         logger.error(f"Master PDF '{master_pdf}' does not exist, cannot add PDF.")
         return False
-        
+
     new_pdf = PDF(
         name=name,
         master_id=master_pdf.id,
         file_path=file_path,
         master_page_number=master_page_number,
-        file_type=file_type
+        file_type=file_type,
     )
     session.add(new_pdf)
     return True
+
 
 @with_session
 def get_db_pdf(value: str | int, session: Session) -> PDF:
