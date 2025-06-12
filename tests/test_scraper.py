@@ -307,7 +307,7 @@ class TestDB:
         return engine
         # Cleanup happens automatically when the in-memory database is closed
         
-    def test_get_db_category_where_category_doesnt_exist_already(self, test_db):
+    def test_add_db_category_where_category_doesnt_exist_already(self, test_db):
         """Test that add_db_category correctly adds a new category to the database.
 
         Given: A database and a new category name
@@ -315,7 +315,7 @@ class TestDB:
         Then: The category should be added to the database and return True
              If the category already exists, it should return False
 
-        Run with: python -m pytest tests/test_scraper.py::TestDB::test_get_db_category_where_category_doesnt_exist_already -v
+        Run with: python -m pytest tests/test_scraper.py::TestDB::test_add_db_category_where_category_doesnt_exist_already -v
         """
         expected_category = "Knowledge_Base"
         
@@ -366,9 +366,56 @@ class TestDB:
             with pytest.raises(ValueError):
                 add_db_category(category_name)
 
+    def test_add_masterpdf_where_pdf_doesnt_exist_already(self, test_db):
+        """Test that add_db_masterpdf correctly adds a new master PDF to the database.
 
+        Given: A database and a new master PDF name
+        When: add_db_masterpdf is called with the master PDF name
+        Then: The master PDF should be added to the database and the returned record
+             should match the expected name
 
+        Run with: python -m pytest tests/test_scraper.py::TestDB::test_add_masterpdf_where_pdf_doesnt_exist_already_and_category_exists -v
+        """
+        expected_master_name = "Test_Master"
+        expected_category_name = "Test_Category"
+        expected_master_filepath = "T:/Test/Testing/Test.pdf"
 
+        with get_db_session(test_db) as session:
+            first_result = add_db_masterpdf(name=expected_master_name, category_name=expected_category_name, file_path=expected_master_filepath)
+            assert first_result is False
+
+            category_count = session.query(MasterPDF).filter(MasterPDF.name == expected_master_name).count()
+            assert category_count == 0
+
+            add_db_category(expected_category_name)
+            second_result = add_db_masterpdf(name=expected_master_name, category_name=expected_category_name, file_path=expected_master_filepath)
+            assert second_result is True
+
+            category_count = session.query(MasterPDF).filter(MasterPDF.name == expected_master_name).count()
+            assert category_count == 1
+            
+    def test_add_masterpdf_where_pdf_exists_already(self, test_db):
+        """Test that add_db_masterpdf prevents duplicate master PDFs from being added.
+
+        Given: A database with an existing master PDF
+        When: add_db_masterpdf is called with the same name
+        Then: The function should return False and not add a duplicate entry
+
+        Run with: python -m pytest tests/test_scraper.py::TestDB::test_add_masterpdf_where_pdf_exists_already -v
+        """
+
+        expected_master_name = "Test_Master"
+        expected_category_name = "Test_Category"
+        expected_master_filepath = "T:/Test/Testing/Test.pdf"
+
+        with get_db_session(test_db) as session:
+            add_db_masterpdf(name=expected_master_name, category_name=expected_category_name, file_path=expected_master_filepath)
+
+            first_result = add_db_masterpdf(name=expected_master_name, category_name=expected_category_name, file_path=expected_master_filepath)
+            assert first_result is False
+
+            category_count = session.query(MasterPDF).filter(MasterPDF.name == expected_master_name).count()
+            assert category_count == 0
         
 
 
