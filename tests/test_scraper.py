@@ -2,9 +2,18 @@ import pytest
 import pymupdf
 
 #local imports
-from pdf_scraper import *
-from utils import *
-from database import *
+from pdf_scraper import _normalize_url, _add_url, remove_pdf, _load_urls
+from utils import ValidationError, ResourceNotFoundError
+from database import (
+    init_db,
+    get_db_session,
+    add_db_category,
+    Category,
+    add_db_masterpdf,
+    MasterPDF,
+    add_db_pdf,
+    get_db_pdf,
+)
 
 
 
