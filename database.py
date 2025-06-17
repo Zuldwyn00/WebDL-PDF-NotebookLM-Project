@@ -49,7 +49,7 @@ class MasterPDF(Base):
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
 
     name: Mapped[str] = mapped_column(nullable=False)
-    file_path: Mapped[str] = mapped_column(nullable=False)
+    file_path: Mapped[str] = mapped_column(nullable=False )
 
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.now, onupdate=datetime.now)
@@ -65,7 +65,7 @@ class PDF(Base):
     master_id: Mapped[int] = mapped_column(ForeignKey("master_PDF.id"), nullable=False)
 
     name: Mapped[str] = mapped_column(nullable=False)
-    file_path: Mapped[str] = mapped_column()
+    file_path: Mapped[str] = mapped_column(nullable=True)
     master_page_number: Mapped[int] = mapped_column()
     file_type: Mapped[Optional[str]] = mapped_column()
 
@@ -177,7 +177,7 @@ def _validate_lookup_value(value) -> None:
         raise ValueError("Value cannot be empty or undefined.")
     
 @with_session
-def _assign_page_number(master_pdf_id: int, session: Session, target_page: Optional[int] = None) -> int:
+def _assign_page_number(master_pdf_id: str | int, session: Session, target_page: Optional[int] = None) -> int:
     """
     Assigns a page number for a new PDF in relation to existing PDFs in the master document.
     
@@ -186,7 +186,7 @@ def _assign_page_number(master_pdf_id: int, session: Session, target_page: Optio
     by shifting existing PDFs forward.
     
     Args:
-        master_pdf_id (int): ID of the master PDF document
+        master_pdf_id (int): Name or ID of the master PDF document
         session (Session): Database session
         target_page (Optional[int]): Desired page number for insertion. If None, appends to end.
         
@@ -198,14 +198,17 @@ def _assign_page_number(master_pdf_id: int, session: Session, target_page: Optio
         existing PDFs. For example, if inserting at page 13 between PDFs spanning pages 10-14
         and 15-20, the insertion point is adjusted to page 15 to maintain PDF integrity.
     """
-    master_pdf = get_db_masterpdf(master_pdf_id, session=session)
-    existing_pdfs = sorted(master_pdf.PDF, key=lambda x: x.master_page_number, reverse=True)
-    existing_page_numbers = [p.master_page_number for p in existing_pdfs]
-    
-    highest_page = max(existing_page_numbers)
+    _validate_lookup_value(master_pdf_id)
 
+    master_pdf = get_db_masterpdf(master_pdf_id, session=session)
+    
+    existing_pdfs = sorted(master_pdf.PDF, key=lambda x: x.master_page_number, reverse=True)
+    
     if not existing_pdfs:
         return 0
+
+    highest_page = existing_pdfs[0].master_page_number
+
     if target_page is None or target_page > highest_page:
         if target_page and target_page > highest_page:
             logger.info(f"Target page '{target_page}' creates a gap. "
@@ -225,7 +228,6 @@ def _assign_page_number(master_pdf_id: int, session: Session, target_page: Optio
         
     return target_page
 
-        #return page, and call insert_pages() for adding page
 
 
     
@@ -284,7 +286,7 @@ def get_db_category(value: str | int, session: Session) -> Category:
 
     
 @with_session
-def add_db_masterpdf(name:str, category_name:str, file_path:str, session: Session) -> bool:
+def add_db_masterpdf(name:str, category_value:str | int, file_path:str, session: Session) -> bool:
     """
     Adds a new master PDF to the database.
 
@@ -299,10 +301,10 @@ def add_db_masterpdf(name:str, category_name:str, file_path:str, session: Sessio
         bool: True if the master PDF was added, False otherwise.
     """
     #find the category to add to
-    category = session.query(Category).filter(Category.name == category_name).first()
+    category = get_db_category(category_value, session=session)
 
     if not category:
-        logger.error(f"Category '{category_name}' not found, cannot add.")
+        logger.error(f"Category '{category_value}' not found, cannot add.")
         return False
 
     if session.query(MasterPDF).filter(MasterPDF.name == name).first():
@@ -351,7 +353,7 @@ def add_db_pdf(name: str,
                file_path: str, 
                session: Session,
                master_page_number: Optional[int] = None,
-               file_type: Optional[str] = None,
+               file_type: Optional[str] = "pdf",
                 ) -> bool:
     """
     Add a new PDF to the database, associated with a master PDF.
@@ -368,18 +370,19 @@ def add_db_pdf(name: str,
     Returns:
         bool: True if PDF was added successfully, False if master PDF doesn't exist.
     """
-    column = MasterPDF.id if isinstance(master_pdf_value, int) else MasterPDF.name
-    master_pdf = session.query(MasterPDF).filter(column == master_pdf_value).first()
+    master_pdf = get_db_masterpdf(master_pdf_value, session=session)
     
     if not master_pdf:
         logger.error(f"Master PDF '{master_pdf}' does not exist, cannot add PDF.")
         return False
         
+    page_number = _assign_page_number(master_pdf_id=master_pdf_value, session=session, target_page=master_page_number)
+
     new_pdf = PDF(
         name=name,
         master_id=master_pdf.id,
         file_path=file_path,
-        master_page_number=master_page_number,
+        master_page_number=page_number,
         file_type=file_type
     )
     session.add(new_pdf)

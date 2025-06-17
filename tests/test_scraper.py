@@ -1,15 +1,10 @@
-from unicodedata import category
-from more_itertools import first
 import pytest
-from pdf_scraper import (
-    _normalize_url,
-    _add_url,
-    remove_pdf,
-    _load_urls,
-)
-from utils import ValidationError, ResourceNotFoundError
-from database import init_db, get_db_session, add_db_category, add_db_masterpdf, add_db_pdf, get_db_category, Category, MasterPDF, PDFs
 import pymupdf
+
+#local imports
+from pdf_scraper import *
+from utils import *
+from database import *
 
 
 
@@ -321,7 +316,7 @@ class TestDB:
         
         # Use a session context manager to keep the session open while accessing the category
         with get_db_session(test_db) as session:
-            add_db_category(name="Knowledge_Base")
+            add_db_category(name="Knowledge_Base", session=session)
             returned_category = session.query(Category).filter(Category.name == "Knowledge_Base").first()
             assert returned_category.name == expected_category
 
@@ -338,14 +333,14 @@ class TestDB:
         category_name = "Test_Category"
         # First add the category
         with get_db_session(test_db) as session:
-            first_result = add_db_category(name=category_name)
+            first_result = add_db_category(name=category_name, session=session)
             assert first_result is True
 
             category_count = session.query(Category).filter(Category.name == category_name).count()
             assert category_count == 1
 
             # Try to add it again
-            second_result = add_db_category(name=category_name)
+            second_result = add_db_category(name=category_name, session=session)
             assert second_result is False
 
             category_count = session.query(Category).filter(Category.name == category_name).count()
@@ -364,7 +359,7 @@ class TestDB:
 
         with get_db_session(test_db) as session:
             with pytest.raises(ValueError):
-                add_db_category(category_name)
+                add_db_category(category_name, session=session)
 
     def test_add_masterpdf_where_pdf_doesnt_exist_already(self, test_db):
         """Test that add_db_masterpdf correctly adds a new master PDF to the database.
@@ -381,14 +376,14 @@ class TestDB:
         expected_master_filepath = "T:/Test/Testing/Test.pdf"
 
         with get_db_session(test_db) as session:
-            first_result = add_db_masterpdf(name=expected_master_name, category_name=expected_category_name, file_path=expected_master_filepath)
+            first_result = add_db_masterpdf(name=expected_master_name, category_name=expected_category_name, file_path=expected_master_filepath, session=session)
             assert first_result is False
 
             category_count = session.query(MasterPDF).filter(MasterPDF.name == expected_master_name).count()
             assert category_count == 0
 
             add_db_category(expected_category_name)
-            second_result = add_db_masterpdf(name=expected_master_name, category_name=expected_category_name, file_path=expected_master_filepath)
+            second_result = add_db_masterpdf(name=expected_master_name, category_name=expected_category_name, file_path=expected_master_filepath, session=session)
             assert second_result is True
 
             category_count = session.query(MasterPDF).filter(MasterPDF.name == expected_master_name).count()
@@ -409,13 +404,28 @@ class TestDB:
         expected_master_filepath = "T:/Test/Testing/Test.pdf"
 
         with get_db_session(test_db) as session:
-            add_db_masterpdf(name=expected_master_name, category_name=expected_category_name, file_path=expected_master_filepath)
+            add_db_masterpdf(name=expected_master_name, category_name=expected_category_name, file_path=expected_master_filepath, session=session)
 
-            first_result = add_db_masterpdf(name=expected_master_name, category_name=expected_category_name, file_path=expected_master_filepath)
+            first_result = add_db_masterpdf(name=expected_master_name, category_name=expected_category_name, file_path=expected_master_filepath, session=session)
             assert first_result is False
 
             category_count = session.query(MasterPDF).filter(MasterPDF.name == expected_master_name).count()
             assert category_count == 0
         
+    def test_assign_page_number_where_no_targetpage_is_given(self, test_db):
 
+        given_master_name = "Test_Master"
+        given_category_name = "Test_Category"
+        given_master_filepath = "T:/Test/Testing/Test_Master.pdf"
 
+        with get_db_session(test_db) as session:
+            assert add_db_category(given_category_name, session=session)
+            assert add_db_masterpdf(given_master_name, given_category_name, given_master_filepath, session=session)
+        
+            assert add_db_pdf("Test_PDF1", given_master_name, file_path=None, session=session)
+            page1 = get_db_pdf("Test_PDF1", session=session).master_page_number
+            assert page1 == 0
+
+            assert add_db_pdf("Test_PDF2", given_master_name, file_path=None, session=session)
+            page2 = get_db_pdf("Test_PDF2", session=session).master_page_number
+            assert page2 == 1
