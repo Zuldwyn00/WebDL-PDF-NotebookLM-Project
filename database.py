@@ -7,7 +7,7 @@
 # Make the method also look if a value already exists so we can handle that with one method instead of checking if a value
 #exists already in every method.
 
-from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, ForeignKey
+from sqlalchemy import create_engine, ForeignKey
 from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
 from datetime import datetime
 from typing import Optional, List
@@ -34,7 +34,7 @@ class Category(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    name: Mapped[str] = mapped_column(nullable=False)
+    name: Mapped[str] = mapped_column(nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
 
     updated_at: Mapped[datetime] = mapped_column(default=datetime.now, onupdate=datetime.now)
@@ -48,8 +48,8 @@ class MasterPDF(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
 
-    name: Mapped[str] = mapped_column(nullable=False)
-    file_path: Mapped[str] = mapped_column(nullable=False )
+    name: Mapped[str] = mapped_column(nullable=False, unique=True)
+    file_path: Mapped[str] = mapped_column(nullable=False, unique=True)
 
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.now, onupdate=datetime.now)
@@ -64,7 +64,7 @@ class PDF(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     master_id: Mapped[int] = mapped_column(ForeignKey("master_PDF.id"), nullable=False)
 
-    name: Mapped[str] = mapped_column(nullable=False)
+    name: Mapped[str] = mapped_column(nullable=False, unique=True)
     file_path: Mapped[str] = mapped_column(nullable=True)
     master_page_number: Mapped[int] = mapped_column()
     file_type: Mapped[Optional[str]] = mapped_column()
@@ -202,12 +202,12 @@ def _assign_page_number(master_pdf_id: str | int, session: Session, target_page:
 
     master_pdf = get_db_masterpdf(master_pdf_id, session=session)
     
-    existing_pdfs = sorted(master_pdf.PDF, key=lambda x: x.master_page_number, reverse=True)
+    existing_pdfs = sorted(master_pdf.PDF, key=lambda x: x.master_page_number)
     
     if not existing_pdfs:
         return 0
 
-    highest_page = existing_pdfs[0].master_page_number
+    highest_page = existing_pdfs[-1].master_page_number
 
     if target_page is None or target_page > highest_page:
         if target_page and target_page > highest_page:
@@ -215,18 +215,22 @@ def _assign_page_number(master_pdf_id: str | int, session: Session, target_page:
             f"Assinging as next available page at: '{highest_page + 1}'")
         return highest_page + 1
 
-    #check if target_page is within the already existing range of pages
+    # Check if target_page requires shifting existing PDFs
     pdfs_to_shift = [pdf for pdf in existing_pdfs if pdf.master_page_number >= target_page]
-    if pdfs_to_shift:
+    if not pdfs_to_shift:
+        return highest_page + 1
+    else:
         # Important: We set target_page to the start of the next PDF to avoid splitting existing PDFs
         # For example, if inserting at page 13 between PDFs at pages 10-14 and 15-20,
         # we insert at page 15 to maintain PDF integrity
-        target_page = pdfs_to_shift[0].master_page_number
-        logger.info(f"Page number '{target_page}' requires shifting {len(pdfs_to_shift)} pdfs.")
-        for pdf in pdfs_to_shift:
+        new_target_page = pdfs_to_shift[0].master_page_number
+        logger.info(f"Page number '{target_page}' requires shifting {len(pdfs_to_shift)} pdfs. New target page is {new_target_page}")
+        
+        for pdf in reversed(pdfs_to_shift):
             pdf.master_page_number += 1
         
-    return target_page
+        
+        return new_target_page
 
 
 
@@ -353,7 +357,7 @@ def add_db_pdf(name: str,
                file_path: str, 
                session: Session,
                master_page_number: Optional[int] = None,
-               file_type: Optional[str] = "pdf",
+               file_type: Optional[str] = None,
                 ) -> bool:
     """
     Add a new PDF to the database, associated with a master PDF.

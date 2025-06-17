@@ -413,14 +413,22 @@ class TestDB:
             assert category_count == 0
         
     def test_assign_page_number_where_no_targetpage_is_given(self, test_db):
+        """
+        Test that add_db_pdf assigns sequential master_page_number values when no target page is specified.
 
+        Given: A master PDF and category exist in the database.
+        When: add_db_pdf is called multiple times without specifying master_page_number.
+        Then: The first PDF should be assigned master_page_number 0, the second 1, and so on.
+
+        Run with: python -m pytest tests/test_scraper.py::TestDB::test_assign_page_number_where_no_targetpage_is_given -v
+        """
         given_master_name = "Test_Master"
         given_category_name = "Test_Category"
         given_master_filepath = "T:/Test/Testing/Test_Master.pdf"
 
         with get_db_session(test_db) as session:
-            assert add_db_category(given_category_name, session=session)
-            assert add_db_masterpdf(given_master_name, given_category_name, given_master_filepath, session=session)
+            add_db_category(given_category_name, session=session)
+            add_db_masterpdf(given_master_name, given_category_name, given_master_filepath, session=session)
         
             assert add_db_pdf("Test_PDF1", given_master_name, file_path=None, session=session)
             page1 = get_db_pdf("Test_PDF1", session=session).master_page_number
@@ -429,3 +437,33 @@ class TestDB:
             assert add_db_pdf("Test_PDF2", given_master_name, file_path=None, session=session)
             page2 = get_db_pdf("Test_PDF2", session=session).master_page_number
             assert page2 == 1
+
+    def test_assign_page_number_with_targetpage_given(self, test_db):
+        """
+
+
+        Run with: python -m pytest tests/test_scraper.py::TestDB::test_assign_page_number_with_targetpage_given -v
+        """
+        given_master_name = "Test_Master"
+        given_category_name = "Test_Category"
+        given_master_filepath = "T:/Test/Testing/Test_Master.pdf"
+
+        with get_db_session(test_db) as session:
+            add_db_category(given_category_name, session=session)
+            add_db_masterpdf(given_master_name, given_category_name, given_master_filepath, session=session)
+            add_db_pdf("Test_PDF1", given_master_name, file_path=None, session=session)
+            add_db_pdf("Test_PDF2", given_master_name, file_path=None, session=session)
+            add_db_pdf("Test_PDF3", given_master_name, file_path=None, session=session)
+            page2 = get_db_pdf("Test_PDF2", session=session).master_page_number
+            assert page2 == 1
+            
+            assert add_db_pdf("Test_PDF4", given_master_name, file_path=None, session=session, master_page_number = 1)
+            page4 = get_db_pdf("Test_PDF4", session=session).master_page_number
+            assert page4 == 1
+
+            page1 = get_db_pdf("Test_PDF1", session=session).master_page_number
+            page2 = get_db_pdf("Test_PDF2", session=session).master_page_number
+            page3 = get_db_pdf("Test_PDF3", session=session).master_page_number
+            assert page1 == 0
+            assert page2 == 2
+            assert page3 == 3
