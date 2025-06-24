@@ -13,6 +13,9 @@ Date: 2025-05-23
 
 # TODO:
 
+# 1) Overhaul and refactor status indication, currently doesn't really work as it puts things as SUCC when they arent complete and puts things as PEND like mp4s if the mp4 hasnt
+# been processed but the PDF has been added to the master, so if it get run again before that completes it will double up the PDF in the master
+
 # 2) Potentially refactor to OOP, but not necessary here since code is not too complex, could at least refactor transcribe_video to be OOP to be a little cleaner
 
 # 3) Docker Containerization, but again not necessary here since this is in-house personal code.
@@ -66,8 +69,7 @@ logger.info(f"PDF Scraper v{__version__} starting up")
 # ─── GLOBAL VARIABLES ────────────────────────────────────────────────────────────────
 GLOBAL_DRIVER = None  # initialize driver
 WEBSITE_LINK = config["website"]["url"]
-
-# ─── PATHS ────────────────────────────────────────────────────────────────
+# ─── PATHS ──────────────────────────────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_DIR = SCRIPT_DIR / "data"
 CURRENT_DATE = datetime.now().strftime("%Y-%m-%d")
@@ -80,7 +82,7 @@ MAX_MASTER_PDF_SIZE = (
     config["pdf"]["max_master_size_mb"] * 1024 * 1024
 )  # Convert MB to bytes
 
-# ─── FILES ────────────────────────────────────────────────────────────────
+# ─── FILES ──────────────────────────────────────────────────────────────────────────
 URLS_FILE = SCRIPT_DIR / config["files"]["urls"]
 
 # ─── DIRECTORY SETUP ────────────────────────────────────────────────────────────────
@@ -144,7 +146,7 @@ def close_driver():
         GLOBAL_DRIVER = None
 
 
-# -------------------------------------------------------------------------------#
+# ─── WEB SCRAPING FUNCTIONS ─────────────────────────────────────────────────────────
 
 
 def get_links(website_url: str) -> dict:
@@ -200,24 +202,34 @@ def get_links(website_url: str) -> dict:
                 wait_for_page_ready(driver)
 
                 # Get category name
-                category_name = driver.find_element(
-                    By.CSS_SELECTOR, "span.text.ng-binding"
-                ).text.strip()
+                category_name = (
+                    driver.find_element(By.CSS_SELECTOR, "span.text.ng-binding")
+                    .text.split("-", 1)[0] #website updated to have main categories that share same name like "User Manual - Administration" so we filter that out and combine them
+                    .strip()
+                )
                 logger.info("Processing category: %s", category_name)
 
-                # Get all article links from this category's subcategories
+                if not category_name:
+                    logger.warning("Category name is empty after processing.")
+
+                # get the subcategory first that contains the links we want
                 article_elements = driver.find_elements(
                     By.CSS_SELECTOR, "ul.article-links a"
                 )
+                # now process the subcategory to find all the links inside of it.
                 for article_element in article_elements:
                     try:
                         href = article_element.get_attribute("href")
-                        if not href or "subcategory" in href:
+                        if not href:
+                            logger.debug(f"{href} not href, skipping")
                             continue
 
                         # Add new links using _add_url
                         if href not in saved_links.get(category_name, {}):
+                            logger.debug(f"New link found: {href}, adding to {category_name}.")
                             _add_url(saved_links, category_name, href, status="PEND", file_type="pdf")
+                        else: 
+                            logger.debug(f"Link already exists: {href}, skipping.")
 
                     except StaleElementReferenceException:
                         logger.debug("Stale article element, skipping...")
@@ -388,7 +400,7 @@ def download_pdfs(saved_links: dict) -> dict:
     return saved_links
 
 
-# ─── PDF MANIPULATION ──────────────────────────────────────────────────────
+# ─── PDF MANIPULATION ───────────────────────────────────────────────────────────────
 
 
 def _combine_categorize_pdfs() -> None:
@@ -764,7 +776,7 @@ def remove_pdf(pdf_key: str, delete_from_json: bool = False) -> None:
     logger.info(f"Deleted pages {start_page} to {end_page} from {found_data['master_pdf']}")
 
 
-# ─── SAVING ────────────────────────────────────────────────────────────────
+# ─── SAVING ─────────────────────────────────────────────────────────────────────────
 
 
 def _normalize_url(raw_url: str) -> str:
@@ -820,16 +832,16 @@ def _add_url(saved_links: dict, category: str, url: str, status: str = "PEND", f
     if category not in saved_links:
         saved_links[category] = {}
 
-        if url in saved_links[category]:
-            raise ValidationError(f"URL {url} already exists in category {category}")
-        else:
-            saved_links[category][url] = {
-                "type": file_type,
-                "master_pdf": None,
-                "page_number": None,
-                "status": status,
-                #"video_urls": [] fix in process_transcripts
-            }
+    if url in saved_links[category]:
+        raise ValidationError(f"URL {url} already exists in category {category}")
+    else:
+        saved_links[category][url] = {
+            "type": file_type,
+            "master_pdf": None,
+            "page_number": None,
+            "status": status,
+            #"video_urls": [] defined in process_transcripts, 
+        }
 
 
 def _save_urls(saved_links: dict) -> None:
@@ -909,8 +921,15 @@ def run_script():
         ScraperError: If any part of the scraping process fails.
     """
     try:
-        all_links = get_links(WEBSITE_LINK)
-        print(f"INFO: Links found - {len(all_links)}")
+        all_links = get_links(WEBSITE_LINK)  
+        # Count URLs with PEND status
+        pend_count = 0
+        for category, urls in all_links.items():
+            for url, data in urls.items():
+                if data["status"] == "PEND":
+                    pend_count += 1
+        print(f"PENDING URL COUNT: - {pend_count}")
+
         download_pdfs(all_links)
         _combine_categorize_pdfs()
         _process_transcripts()
@@ -927,6 +946,7 @@ def main():
     Runs the main scraping process and handles any top-level exceptions.
     """
     run_script()
+
 
 
 if __name__ == "__main__":

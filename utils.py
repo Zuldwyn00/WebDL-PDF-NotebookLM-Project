@@ -149,18 +149,29 @@ def setup_logger(
         >>> logger.info("Processing started")
     """
     logger = logging.getLogger(name)
-    if level is None:
-        logger.setLevel(getattr(logging, config["logger"]["level"]))
-    else:
-        logger.setLevel(getattr(logging, level))
+    log_level = level or config["logger"]["level"]
+    logger.setLevel(getattr(logging, log_level))
+
+    # Prevent adding duplicate handlers
+    if logger.hasHandlers():
+        logger.handlers.clear()
 
     # Create console handler with custom formatter
     console_handler = TqdmLoggingHandler()
     formatter = logging.Formatter(
-        "%(asctime)s %(levelname)-8s %(name)s:%(lineno)d %(message)s"
+        config["logger"]["format"], datefmt=config["logger"]["datefmt"]
     )
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
+
+    # Create file handler
+    log_dir = Path(__file__).resolve().parent / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / config["logger"]["filename"]
+
+    file_handler = logging.FileHandler(log_file, mode="a", encoding="utf-8")
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
 
     return logger
 

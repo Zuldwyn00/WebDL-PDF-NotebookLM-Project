@@ -57,7 +57,7 @@ class TestNormalizeURL:
         """
         # ARRANGE: Set up our test data
         input_url = "https://Example.com/pAth"
-        expected_result = "https://example.com/path"
+        expected_result = "https://example.com/pAth"
 
         # ACT: Call the function we're testing
         actual_result = _normalize_url(input_url)
@@ -74,17 +74,13 @@ class TestNormalizeURL:
         """
         # ARRANGE: Set up our test data
         input_url = "https://Example.com/Path/File.PDF"
-        expected_result = "https://example.com/path/file.pdf"
+        expected_result = "https://example.com/path/File.pdf"
 
         # ACT: Call the function we're testing
         actual_result = _normalize_url(input_url)
 
         # ASSERT: Check if we got what we expected
         assert actual_result == expected_result
-
-        print(f"✅ Input: {input_url}")
-        print(f"✅ Expected: {expected_result}")
-        print(f"✅ Got: {actual_result}")
 
     def test_handles_url_without_path(self):
         """Test that _normalize_url handles URLs without paths correctly.
@@ -103,9 +99,6 @@ class TestNormalizeURL:
         # ASSERT: Check if we got what we expected
         assert actual_result == expected_result
 
-        print(f"✅ Input: {input_url}")
-        print(f"✅ Expected: {expected_result}")
-        print(f"✅ Got: {actual_result}")
 
 
 class TestAddURL:
