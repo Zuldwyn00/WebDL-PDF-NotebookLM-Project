@@ -20,6 +20,10 @@ Date: 2025-05-23
 
 # 3) Docker Containerization, but again not necessary here since this is in-house personal code.
 
+# 4) # Fix error where sometimes pages dont delete properly giving an invalid dict key mupdf error.
+
+# INPROGRESS:
+
 # 4) Could change to use a database instead of json file if we want to scale up.
 
 __author__ = "Zuldwyn00 <zuldwyn@gmail.com>"
@@ -47,6 +51,7 @@ import pymupdf, ocrmypdf
 # Local imports
 from transcribe_video import transcribe_video, combine_transcript
 from utils import (
+    PDFProcessingError,
     setup_logger,
     load_config,
     ensure_directories,
@@ -757,8 +762,19 @@ def delete_pdf(pdf_key: str, status: str = "PEND", delete_from_database: bool = 
             )
 
             master_doc.delete_pages(start_page, end_page)
-            master_doc.save(str(found_data["master_pdf"]), incremental=True, encryption=0)
-
+            try:
+                logger.debug("Attempting incremental save...")
+                master_doc.saveIncr()
+            #sometimes the deletion fails because the pdf structure is broken or something im not sure why 
+            # issue might be caused by how saveIncr works, it never deletes the pages, it appends information to the end of the
+            # pdf saying that x-x pages are no longer in use, which actually increases the file size. 
+            except pymupdf.mupdf.FzErrorSyntax as e:
+                logger.warning(
+                    "Incremental save failed for %s with error: %s. ",
+                    found_data['master_pdf'], e
+                )
+                raise PDFProcessingError
+        
         except ValueError as e:
             raise ValidationError(f"Invalid page range: {start_page} to {end_page}")
         except RuntimeError as e:
@@ -775,10 +791,12 @@ def delete_pdf(pdf_key: str, status: str = "PEND", delete_from_database: bool = 
             del pdf_dict[found_category]
         logger.info("Deleted %s from database", pdf_key)
     else:
+        logger.info("Deleted pages %s to %s from %s", start_page, end_page, found_data['master_pdf'])
+        pdf_dict[found_category][pdf_key]["page_number"] = None
+        pdf_dict[found_category][pdf_key]["master_pdf"] = None
         pdf_dict[found_category][pdf_key]["status"] = status
 
     _save_urls(pdf_dict)
-    logger.info("Deleted pages %s to %s from %s", start_page, end_page, found_data['master_pdf'])
 
 
 # ─── SAVING ─────────────────────────────────────────────────────────────────────────
@@ -849,6 +867,27 @@ def _add_url(saved_links: dict, category: str, url: str, status: str = "PEND", f
         }
 
 
+def sort_urls_by_page_number(saved_links: dict) -> dict:
+    """Sorts URLs within each category by page_number in ascending order.
+
+    Args:
+        saved_links (dict): The dictionary of links to sort, structured by category.
+
+    Returns:
+        dict: A new dictionary with URLs sorted by page_number within each category.
+    """
+    sorted_links = {}
+    # Sort categories alphabetically
+    for category in sorted(saved_links.keys()):
+        urls = saved_links[category]
+        # Sort urls by page_number. `None` page numbers are placed at the end.
+        sorted_items = sorted(
+            urls.items(), key=lambda item: (item[1].get("page_number") is None, item[1].get("page_number"))
+        )
+        sorted_links[category] = dict(sorted_items)
+    return sorted_links
+
+
 def _save_urls(saved_links: dict) -> None:
     """Saves the saved_links dictionary to the URLs file in JSON format.
 
@@ -870,6 +909,9 @@ def _save_urls(saved_links: dict) -> None:
         OSError: If saving to file fails.
     """
     try:
+        # Sort the links before saving to maintain a consistent order.
+        sorted_links = sort_urls_by_page_number(saved_links)
+        
         # Create a JSON-safe copy of the dictionary
         json_safe_links = {
             category: {
@@ -879,11 +921,11 @@ def _save_urls(saved_links: dict) -> None:
                 }
                 for url, data in urls.items()
             }
-            for category, urls in saved_links.items()
+            for category, urls in sorted_links.items()
         }
 
         with open(URLS_FILE, "w", encoding="utf8") as f:
-            json.dump(json_safe_links, f, indent=2, sort_keys=True)
+            json.dump(json_safe_links, f, indent=2)
             
         logger.debug("Successfully saved %d categories to %s", len(saved_links), URLS_FILE)
             
@@ -951,8 +993,6 @@ def main():
     Runs the main scraping process and handles any top-level exceptions.
     """
     run_script()
-
-
 
 if __name__ == "__main__":
     main()
