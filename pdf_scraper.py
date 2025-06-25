@@ -64,7 +64,7 @@ config = load_config()
 logger = setup_logger(__name__, config)
 
 # Log startup information
-logger.info(f"PDF Scraper v{__version__} starting up")
+logger.info("PDF Scraper v%s starting up", __version__)
 
 # ─── GLOBAL VARIABLES ────────────────────────────────────────────────────────────────
 GLOBAL_DRIVER = None  # initialize driver
@@ -91,7 +91,7 @@ ensure_directories(
 )
 if not URLS_FILE.exists():
     URLS_FILE.touch()
-    logger.info(f"Created file: {URLS_FILE}")
+    logger.info("Created file: %s", URLS_FILE)
 
 
 # ─── DRIVER FUNCTIONS ────────────────────────────────────────────────────────────────
@@ -221,15 +221,15 @@ def get_links(website_url: str) -> dict:
                     try:
                         href = article_element.get_attribute("href")
                         if not href:
-                            logger.debug(f"{href} not href, skipping")
+                            logger.debug("%s not href, skipping", href)
                             continue
 
                         # Add new links using _add_url
                         if href not in saved_links.get(category_name, {}):
-                            logger.debug(f"New link found: {href}, adding to {category_name}.")
+                            logger.debug("New link found: %s, adding to %s.", href, category_name)
                             _add_url(saved_links, category_name, href, status="PEND", file_type="pdf")
                         else: 
-                            logger.debug(f"Link already exists: {href}, skipping.")
+                            logger.debug("Link already exists: %s, skipping.", href)
 
                     except StaleElementReferenceException:
                         logger.debug("Stale article element, skipping...")
@@ -318,7 +318,7 @@ def download_pdfs(saved_links: dict) -> dict:
             for link, data in urls.items():
                 if data["status"] not in {"SUCC"}:
                     try:
-                        logger.info(f"Processing {category}: {link}")
+                        logger.info("Processing %s: %s", category, link)
                         driver.get(link)
                         wait_for_page_ready(driver)
 
@@ -335,7 +335,7 @@ def download_pdfs(saved_links: dict) -> dict:
                                 for video_source in video_elements:
                                     video_url = video_source.get_attribute("src")
                                     if video_url:
-                                        logger.info(f"Found video in {link}: {video_url}")
+                                        logger.info("Found video in %s: %s", link, video_url)
                                         data["video_urls"].append(video_url)
 
                         except Exception as e:
@@ -373,7 +373,7 @@ def download_pdfs(saved_links: dict) -> dict:
                             if not data["type"] == "mp4":  # if not mp4, then we can set status to SUCC
                                 data["status"] = "SUCC"
                         except IOError as e:
-                            raise DownloadError(f"Failed to save PDF {finalname}: {str(e)}")
+                            raise DownloadError(f"Failed to save PDF {finalname}: {e}")
 
                     except TimeoutException as e:
                         logger.error("Timeout downloading %s: %s", link, str(e))
@@ -433,11 +433,11 @@ def _combine_categorize_pdfs() -> None:
         pdf_files = sorted(DATED_DOWNLOAD_DIR.glob("*.pdf"))
         if not pdf_files:
             logger.exception(
-                f"No PDF files in {DATED_DOWNLOAD_DIR}, skipping combination and categorization"
+                "No PDF files in %s, skipping combination and categorization", DATED_DOWNLOAD_DIR
             )
             return
 
-        logger.info(f"Found {len(pdf_files)} PDF files to process")
+        logger.info("Found %d PDF files to process", len(pdf_files))
 
         # ----------------------------------------------------------------------
         # MATCH: Match PDFs with URL data
@@ -465,7 +465,7 @@ def _combine_categorize_pdfs() -> None:
         # ----------------------------------------------------------------------
         # Process each category
         for category, urls in pdf_dict.items():
-            logger.info(f"Processing category: {category}")
+            logger.info("Processing category: %s", category)
 
             # Get PDFs for this category
             category_pdfs = []
@@ -479,11 +479,11 @@ def _combine_categorize_pdfs() -> None:
                         category_pdfs.append(data["path"])
 
             if not category_pdfs:
-                logger.info(f"No PDFs found for category: {category}")
+                logger.info("No PDFs found for category: %s", category)
                 continue
 
             logger.debug(
-                f"Found {len(category_pdfs)} PDFs for category: {category}"
+                "Found %d PDFs for category: %s", len(category_pdfs), category
             )
 
             # ------------------------------------------------------------------
@@ -499,7 +499,7 @@ def _combine_categorize_pdfs() -> None:
                 master_doc = pymupdf.open(str(master_path))
                 incremental = True
             else:
-                logger.debug(f"Creating new master PDF: {master_path}")
+                logger.debug("Creating new master PDF: %s", master_path)
                 master_doc = pymupdf.open()
                 master_doc.new_page()
                 incremental = False
@@ -517,7 +517,7 @@ def _combine_categorize_pdfs() -> None:
                     leave=True,
                 ):
                     try:
-                        logger.debug(f"Processing {pdf_path.name}")
+                        logger.debug("Processing %s", pdf_path.name)
 
                         # Apply OCR as in the original code
                         chunk = apply_ocr(pymupdf.open(str(pdf_path)))
@@ -530,7 +530,7 @@ def _combine_categorize_pdfs() -> None:
                                 > MAX_MASTER_PDF_SIZE
                             ):
                                 logger.debug(
-                                    f"Size limit reached, creating new master PDF"
+                                    "Size limit reached, creating new master PDF"
                                 )
 
                                 # Save current and create new master
@@ -563,10 +563,10 @@ def _combine_categorize_pdfs() -> None:
                         finally:
                             chunk.close()
                     except Exception as e:
-                        logger.error(f"Error processing {pdf_path.name}: {str(e)}")
+                        logger.error("Error processing %s: %s", pdf_path.name, e)
 
                 # Save final master PDF
-                logger.debug(f"Saving master PDF: {master_path}")
+                logger.debug("Saving master PDF: %s", master_path)
                 master_doc.save(str(master_path), incremental=incremental, encryption=0)
             finally:
                 master_doc.close()
@@ -580,7 +580,7 @@ def _combine_categorize_pdfs() -> None:
 
     except Exception as e:
         logger.exception("Failed to combine and categorize PDFs: %s", str(e))
-        raise ProcessingError(f"PDF processing failed: {str(e)}")
+        raise ProcessingError(f"PDF processing failed: {e}")
 
 
 def _process_transcripts() -> None:
@@ -600,16 +600,16 @@ def _process_transcripts() -> None:
     pdf_dict = _load_urls()
     
     for category, urls in pdf_dict.items():
-        logger.info(f"Processing transcripts for category: {category}")
+        logger.info("Processing transcripts for category: %s", category)
         for url, data in urls.items():
             if data.get("type") == "mp4" and data.get("video_urls") and not data["status"] == "SUCC":
                 video_urls = data["video_urls"]
                 logger.debug(
-                    f"Processing {len(video_urls)} video transcripts for page: {url}"
+                    "Processing %d video transcripts for page: %s", len(video_urls), url
                 )
                 try:
                     for video_url in video_urls:
-                        logger.debug(f"Processing video transcript for: {video_url}")
+                        logger.debug("Processing video transcript for: %s", video_url)
                         try:
                             transcript_doc = transcribe_video(
                                 video_url,
@@ -619,17 +619,17 @@ def _process_transcripts() -> None:
                             )
                             combine_transcript(transcript_doc)
                         except Exception as e:
-                            logger.error(f"Failed to process video {video_url}: {str(e)}")
+                            logger.error("Failed to process video %s: %s", video_url, e)
                             data["status"] = "FAIL"
-                            raise ProcessingError(f"Video processing failed: {str(e)}")
+                            raise ProcessingError(f"Video processing failed: {e}")
                     
                     # Only update status to SUCC if all videos were processed successfully
                     data["status"] = "SUCC"
-                    logger.info(f"Successfully processed all videos for {url}")
+                    logger.info("Successfully processed all videos for %s", url)
                 except Exception as e:
-                    logger.error(f"Failed to process videos for {url}: {str(e)}")
+                    logger.error("Failed to process videos for %s: %s", url, e)
                     data["status"] = "FAIL"
-                    raise ProcessingError(f"Transcription processing failed: {str(e)}")
+                    raise ProcessingError(f"Transcription processing failed: {e}")
     
     _save_urls(pdf_dict)
     logger.info("Completed processing all video transcripts")
@@ -662,7 +662,7 @@ def apply_ocr(doc: pymupdf.Document) -> pymupdf.Document:
     # Skip OCR if less than 2 images found
     if image_count < min_images:
         logger.debug(
-            f"Less than {min_images} images found in document ({image_count} found), skipping OCR"
+            "Less than %d images found in document (%d found), skipping OCR", min_images, image_count
         )
         return doc
 
@@ -684,8 +684,8 @@ def apply_ocr(doc: pymupdf.Document) -> pymupdf.Document:
         return ocr_doc
 
     except Exception as e:
-        logger.error(f"Error during OCR: {e}")
-        raise ProcessingError(f"OCR processing failed: {str(e)}")
+        logger.error("Error during OCR: %s", e)
+        raise ProcessingError(f"OCR processing failed: {e}")
     finally:
         # Clean up temp files
         if temp_input.exists():
@@ -745,7 +745,7 @@ def remove_pdf(pdf_key: str, delete_from_json: bool = False) -> None:
                 next_url, next_data = master_pdf_urls[current_index + 1]
                 if next_data.get("page_number") > start_page:
                     end_page = next_data["page_number"] - 1
-                    logger.debug(f"Found next PDF in master file: {next_url}")
+                    logger.debug("Found next PDF in master file: %s", next_url)
             
             (end_page == master_doc.page_count) and logger.debug(
                 "pdf_key is last in master_file"
@@ -757,9 +757,9 @@ def remove_pdf(pdf_key: str, delete_from_json: bool = False) -> None:
         except ValueError as e:
             raise ValidationError(f"Invalid page range: {start_page} to {end_page}")
         except RuntimeError as e:
-            raise RuntimeError(f"Failed to delete pages: {str(e)}")
+            raise RuntimeError(f"Failed to delete pages: {e}")
         except Exception as e:
-            raise ProcessingError(f"Unexpected error: {str(e)}")
+            raise ProcessingError(f"Unexpected error: {e}")
         finally:
             master_doc.close()
 
@@ -768,12 +768,12 @@ def remove_pdf(pdf_key: str, delete_from_json: bool = False) -> None:
         # Remove empty category if it was the last URL
         if not pdf_dict[found_category]:
             del pdf_dict[found_category]
-        logger.info(f"Deleted {pdf_key} from urls.json")
+        logger.info("Deleted %s from database", pdf_key)
     else:
         pdf_dict[found_category][pdf_key]["status"] = "PEND"
 
     _save_urls(pdf_dict)
-    logger.info(f"Deleted pages {start_page} to {end_page} from {found_data['master_pdf']}")
+    logger.info("Deleted pages %s to %s from %s", start_page, end_page, found_data['master_pdf'])
 
 
 # ─── SAVING ─────────────────────────────────────────────────────────────────────────
@@ -880,13 +880,13 @@ def _save_urls(saved_links: dict) -> None:
         with open(URLS_FILE, "w", encoding="utf8") as f:
             json.dump(json_safe_links, f, indent=2, sort_keys=True)
             
-        logger.debug(f"Successfully saved {len(saved_links)} categories to {URLS_FILE}")
+        logger.debug("Successfully saved %d categories to %s", len(saved_links), URLS_FILE)
             
     except OSError as e:
-        logger.error(f"Failed to save URLs to {URLS_FILE}: {e}")
+        logger.error("Failed to save URLs to %s: %s", URLS_FILE, e)
         raise
     except Exception as e:
-        logger.error(f"Unexpected error while saving URLs: {e}")
+        logger.error("Unexpected error while saving URLs: %s", e)
         raise
 
 
@@ -935,7 +935,7 @@ def run_script():
         _process_transcripts()
     except Exception as e:
         logger.exception("An error occurred while running the script: %s", str(e))
-        raise ScraperError(f"Script execution failed: {str(e)}")
+        raise ScraperError(f"Script execution failed: {e}")
     finally:
         close_driver()
 
@@ -951,3 +951,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

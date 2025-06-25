@@ -235,7 +235,7 @@ def combine_transcript(transcript_doc: pymupdf.Document):
             master_doc.close()
 
     except Exception as e:
-        raise ProcessingError(f"Transcription combining failed: {str(e)}")
+        raise ProcessingError(f"Transcription combining failed: {e}")
 
 
 def save_transcript(transcript, output_file):
@@ -367,7 +367,7 @@ def transcribe_video(
 
         except Exception as e:
             logger.error(f" {e}", file=sys.stderr)
-            raise ProcessingError(f"Video transcription failed: {str(e)}")
+            raise ProcessingError(f"Video transcription failed: {e}")
 
 
 def main():
@@ -382,3 +382,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

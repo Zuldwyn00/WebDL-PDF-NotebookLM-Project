@@ -218,7 +218,9 @@ def _assign_page_number(master_pdf_id: str | int, session: Session, target_page:
     # Check if target_page requires shifting existing PDFs
     pdfs_to_shift = [pdf for pdf in existing_pdfs if pdf.master_page_number >= target_page]
     if not pdfs_to_shift:
+        
         return highest_page + 1
+    
     else:
         # Important: We set target_page to the start of the next PDF to avoid splitting existing PDFs
         # For example, if inserting at page 13 between PDFs at pages 10-14 and 15-20,
@@ -231,6 +233,7 @@ def _assign_page_number(master_pdf_id: str | int, session: Session, target_page:
         
         
         return new_target_page
+
 
 
 
