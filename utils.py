@@ -26,6 +26,9 @@ class ProcessingError(ScraperError):
 
     pass
 
+class PDFProcessingError(ProcessingError):
+    """Raised when the PDF manipulation/creation process fails"""
+
 
 class ValidationError(ScraperError):
     """Raised when input validation fails (e.g., invalid status, missing files)."""

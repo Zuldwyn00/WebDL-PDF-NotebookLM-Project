@@ -626,12 +626,16 @@ def _process_transcripts() -> None:
                     # Only update status to SUCC if all videos were processed successfully
                     data["status"] = "SUCC"
                     logger.info("Successfully processed all videos for %s", url)
+
                 except Exception as e:
-                    logger.error("Failed to process videos for %s: %s", url, e)
+                    delete_pdf(url, status="FAIL")
                     data["status"] = "FAIL"
+                    #dont process other videos in url, fail entire thing and set status as FAIL and delete from master
+                    logger.error("Failed to process videos for %s: %s", url, e)
                     raise ProcessingError(f"Transcription processing failed: {e}")
-    
-    _save_urls(pdf_dict)
+                finally:
+                    #ensure we save all statuses incase of failure
+                    _save_urls(pdf_dict)
     logger.info("Completed processing all video transcripts")
 
 
@@ -694,12 +698,13 @@ def apply_ocr(doc: pymupdf.Document) -> pymupdf.Document:
             temp_output.unlink()
 
 
-def remove_pdf(pdf_key: str, delete_from_json: bool = False) -> None:
+def delete_pdf(pdf_key: str, status: str = "PEND", delete_from_database: bool = False) -> None:
     """Removes a PDF from its master file and optionally from the URL database.
 
     Args:
         pdf_key (str): The URL key of the PDF to remove.
-        delete_from_json (bool, optional): Whether to delete the entry from urls.json.
+        status (str): Defaults to changing status to PEND, can define as "PEND, SUCC, FAIL" otherwise.
+        delete_from_database (bool, optional): Whether to delete the entry from urls.json.
             Defaults to False.
 
     Raises:
@@ -763,14 +768,14 @@ def remove_pdf(pdf_key: str, delete_from_json: bool = False) -> None:
         finally:
             master_doc.close()
 
-    if delete_from_json:
+    if delete_from_database:
         del pdf_dict[found_category][pdf_key]
         # Remove empty category if it was the last URL
         if not pdf_dict[found_category]:
             del pdf_dict[found_category]
         logger.info("Deleted %s from database", pdf_key)
     else:
-        pdf_dict[found_category][pdf_key]["status"] = "PEND"
+        pdf_dict[found_category][pdf_key]["status"] = status
 
     _save_urls(pdf_dict)
     logger.info("Deleted pages %s to %s from %s", start_page, end_page, found_data['master_pdf'])

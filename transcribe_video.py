@@ -23,6 +23,7 @@ from utils import (
     get_doc_size_bytes,
     get_highest_index,
     ProcessingError,
+    PDFProcessingError,
 )
 
 # ─── LOGGER & CONFIG ────────────────────────────────────────────────────────────────
@@ -316,38 +317,43 @@ def transcribe_video(
             # First save as text file (like the working version)
             text_path = os.path.join(temp_dir, "transcript.txt")
             save_transcript(transcript, text_path)
+            try:
+                # Create a new PDF document
+                doc = pymupdf.open()
+                page = doc.new_page()
 
-            # Create a new PDF document
-            doc = pymupdf.open()
-            page = doc.new_page()
+                # Add metadata to document
+                doc.set_metadata({"title": filename, "subject": "Video Transcript"})
 
-            # Add metadata to document
-            doc.set_metadata({"title": filename, "subject": "Video Transcript"})
+                # Add title and metadata to first page
+                title_font = pymupdf.Font("helv")
+                text_font = pymupdf.Font("helv")
 
-            # Add title and metadata to first page
-            title_font = pymupdf.Font("helv")
-            text_font = pymupdf.Font("helv")
+                # Add title
+                page.insert_text((50, 50), f"Transcript: {filename}", fontsize=16)
 
-            # Add title
-            page.insert_text((50, 50), f"Transcript: {filename}", fontsize=16)
+                # Add custom information at the start
+                y_pos = 100
+                page.insert_text(
+                    (50, y_pos), f"Category: {category or 'Unknown'}", fontsize=12
+                )
 
-            # Add custom information at the start
-            y_pos = 100
-            page.insert_text(
-                (50, y_pos), f"Category: {category or 'Unknown'}", fontsize=12
-            )
+                y_pos += 20
+                page.insert_text((50, y_pos), f"Type: Video", fontsize=12)
+                y_pos += 20
+                page.insert_text((50, y_pos), f"Master PDF Source: {master}", fontsize=12)
+                y_pos += 20
+                page.insert_text(
+                    (50, y_pos), f"Master PDF Page Number: {master_page}", fontsize=12
+                )
 
-            y_pos += 20
-            page.insert_text((50, y_pos), f"Type: Video", fontsize=12)
-            y_pos += 20
-            page.insert_text((50, y_pos), f"Master PDF Source: {master}", fontsize=12)
-            y_pos += 20
-            page.insert_text(
-                (50, y_pos), f"Master PDF Page Number: {master_page}", fontsize=12
-            )
+                # Add transcript content from the text file
+                y_pos += 40
+            except Exception as e:
+                logger.error("Issue creating custom content to insert in PDF failed in transcribe_video() process.")
+                raise PDFProcessingError(f"custom PDF content creation failed: {e}")
 
-            # Add transcript content from the text file
-            y_pos += 40
+
             with open(text_path, "r", encoding="utf-8") as f:
                 for line in f:
                     # Add text
@@ -361,12 +367,12 @@ def transcribe_video(
 
             logger.info("Transcription completed successfully!")
             elapsed_time = time.time() - start_time
-            logger.debug(f"Total processing time: {format_timestamp(elapsed_time)}")
+            logger.debug("Total processing time: %s", format_timestamp(elapsed_time))
 
             return doc
 
         except Exception as e:
-            logger.error(f" {e}", file=sys.stderr)
+            logger.error("transcribe_video() process failed, %s", e)
             raise ProcessingError(f"Video transcription failed: {e}")
 
 
@@ -376,8 +382,8 @@ def main():
     Demonstrates how to transcribe a video from a URL.
     """
     # Example URL - replace with your video URL
-    video_url = "https://example.com/video.mp4"
-    transcribe_video(video_url)
+    #video_url = "https://example.com/video.mp4"
+    #transcribe_video(video_url)
 
 
 if __name__ == "__main__":
