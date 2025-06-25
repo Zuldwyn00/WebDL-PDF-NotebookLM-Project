@@ -7,6 +7,8 @@
 # Make the method also look if a value already exists so we can handle that with one method instead of checking if a value
 #exists already in every method.
 
+#3) Make one method that handles adding categories, pdfs, and masters
+
 from sqlalchemy import create_engine, ForeignKey
 from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
 from datetime import datetime
@@ -234,12 +236,25 @@ def _assign_page_number(master_pdf_id: str | int, session: Session, target_page:
         
         return new_target_page
 
-
-
-
-    
-
 # ─── DATABASE OPERATIONS ────────────────────────────────────────────────────────────────
+def process_new_pdf(file_path: str, category_name: str, master_pdf_id: str | int):
+    "Orchestrator to handle processing and adding a new pdf to the database and to the masterpdf file itself"
+    try:
+        get_db_category(category_name)
+    except ResourceNotFoundError:
+        add_db_category(category_name)
+        logger.info("Category %s not found, creating new category", category_name)
+
+    try:
+        get_db_masterpdf(master_pdf_id)
+    except someerrorhere
+        add_db_masterpdf(master_pdf_id) #verify is a name, dont add a category as an ID number
+
+
+    add_db_pdf(add to DB first)
+    your_masterpdf_adding_logic_here(master_pdf_path)
+
+     
 
 @with_session
 def add_db_category(name:str, session: Session) -> bool:
@@ -291,7 +306,6 @@ def get_db_category(value: str | int, session: Session) -> Category:
         return category
     raise ResourceNotFoundError(f"Category '{value}' not found.")
 
-    
 @with_session
 def add_db_masterpdf(name:str, category_value:str | int, file_path:str, session: Session) -> bool:
     """
