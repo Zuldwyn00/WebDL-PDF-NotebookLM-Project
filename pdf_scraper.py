@@ -34,6 +34,7 @@ __version__ = "2.0"
 __date__ = "2025-05-23"
 
 # External imports
+from curses import keyname
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -46,12 +47,23 @@ from datetime import datetime
 from urllib.parse import urlparse, urlunparse
 from pathlib import Path
 from tqdm import tqdm
+from functools import wraps
 import os, base64
 import json
 import pymupdf, ocrmypdf
 
+
 # Local imports
 from transcribe_video import transcribe_video, combine_transcript
+from database import (
+    with_session,
+    get_db_category,
+    get_db_masterpdf,
+    get_db_pdf,
+    add_db_category,
+    add_db_masterpdf,
+    add_db_pdf,
+)
 from utils import (
     PDFProcessingError,
     setup_logger,
@@ -261,7 +273,7 @@ def get_links(website_url: str) -> dict:
     return saved_links
 
 
-def wait_for_page_ready(driver):
+def wait_for_page_ready(driver: webdriver.Chrome):
     """Waits for the page to be fully loaded by checking spinner and image loading.
 
     Args:
@@ -408,7 +420,22 @@ def download_pdfs(saved_links: dict) -> dict:
 
 
 # ─── PDF MANIPULATION ───────────────────────────────────────────────────────────────
+def with_pdf(pdf_key_arg: str | int = "master_pdf_id"):
 
+    def decorator(func):
+        @wraps(func)
+        @with_session
+        def wrapper(*args, **kwargs):
+
+            pdf_key = kwargs.get(pdf_key_arg)
+            if pdf_key is None:
+                raise ValueError(f"'{pdf_key_arg}' must be provided as a keyword argument.")
+            
+            doc = None
+            try:
+                master_pdf_obj = get_db_masterpdf(pdf_key)
+
+        
 
 def _combine_categorize_pdfs() -> None:
     """Combines all PDFs from the dated download directory into master PDFs by category.
@@ -800,10 +827,11 @@ def delete_pdf(pdf_key: str, status: str = "PEND", delete_from_database: bool = 
 
     _save_urls(pdf_dict)
 
+
 def add_pdf(pdf_key: str, target_page: int) -> bool:
     """Adds a PDF from database into a master, can specify where with target_page which will shift all pages over to allow room
     returns True if successful, false if failure"""
-    pdf_dict = _load_urls()
+    
 
 
 

@@ -239,7 +239,7 @@ def _assign_page_number(master_pdf_id: str | int, session: Session, target_page:
         
         return new_target_page
 
-# ─── DATABASE OPERATIONS ────────────────────────────────────────────────────────────────
+# ─── DATABASE OPERATIONS ───────────────────────────────────────────────────────────────
 def process_new_pdf(file_path: str, category_name: str, master_pdf_id: str | int):
     "Orchestrator to handle processing and adding a new pdf to the database and to the masterpdf file itself, the orc"
     try:
@@ -257,183 +257,188 @@ def process_new_pdf(file_path: str, category_name: str, master_pdf_id: str | int
     add_db_pdf(add to DB first)
     your_masterpdf_adding_logic_here(master_pdf_path)
 
-@with_session
-def add_db_category(name:str, session: Session) -> bool:
-    """
-    Add a new category to the database if it doesn't already exist.
-    
-    Args:
-        name (str): The name of the category to add.
-        session (Session): An existing SQLAlchemy session. If not provided, a new session
-                           is created by the `@with_session` decorator.
+
+class DatabaseService:
+    def __init__(self, session: Session):
+        self.session = session
+
+    @with_session
+    def add_db_category(name:str, session: Session) -> bool:
+        """
+        Add a new category to the database if it doesn't already exist.
         
-    Returns:
-        bool: True if category was added, False if it already existed.
-    """
-    if not name or not name.strip():
-            raise ValueError("Category name cannot be empty.")
-    
-    category = session.query(Category).filter(Category.name == name).first()
-    if category:
-        logger.info("Category already exists, cannot add.")
-        return False
-    new_category = Category(name=name)
-    session.add(new_category)
-    return True
-
-@with_session
-def get_db_category(value: str | int, session: Session) -> Category:
-    """
-    Get a category from the database by name.
-    
-    Args:
-        value (str | int): The name or ID of the category.
-        session (Session): An existing SQLAlchemy session. If not provided, a new session
-                           is created by the `@with_session` decorator.
+        Args:
+            name (str): The name of the category to add.
+            session (Session): An existing SQLAlchemy session. If not provided, a new session
+                            is created by the `@with_session` decorator.
+            
+        Returns:
+            bool: True if category was added, False if it already existed.
+        """
+        if not name or not name.strip():
+                raise ValueError("Category name cannot be empty.")
         
-    Returns:
-        Category: The category object if found.
+        category = session.query(Category).filter(Category.name == name).first()
+        if category:
+            logger.info("Category already exists, cannot add.")
+            return False
+        new_category = Category(name=name)
+        session.add(new_category)
+        return True
+
+    @with_session
+    def get_db_category(value: str | int, session: Session) -> Category:
+        """
+        Get a category from the database by name.
         
-    Raises:
-        ResourceNotFoundError: If the category does not exist.
-    """
-    _validate_lookup_value(value)
-    logger.debug("Attempting to retrieve category:")
+        Args:
+            value (str | int): The name or ID of the category.
+            session (Session): An existing SQLAlchemy session. If not provided, a new session
+                            is created by the `@with_session` decorator.
+            
+        Returns:
+            Category: The category object if found.
+            
+        Raises:
+            ResourceNotFoundError: If the category does not exist.
+        """
+        _validate_lookup_value(value)
+        logger.debug("Attempting to retrieve category:")
 
-    column = Category.id if isinstance(value, int) else Category.name
-    category = session.query(Category).filter(column == value).first()
-    
-    if category:
-        return category
-    raise ResourceNotFoundError(f"Category '{value}' not found.")
-
-@with_session
-def add_db_masterpdf(name:str, category_value:str | int, file_path:str, session: Session) -> bool:
-    """
-    Adds a new master PDF to the database.
-
-    Args:
-        name (str): The name of the master PDF.
-        category_name (str): The name of the category it belongs to.
-        file_path (str): The file path for the master PDF.
-        session (Session): An existing SQLAlchemy session. If not provided, a new session
-                           is created by the `@with_session` decorator.
-
-    Returns:
-        bool: True if the master PDF was added, False otherwise.
-    """
-    #find the category to add to
-    category = get_db_category(category_value, session=session)
-
-    if not category:
-        logger.error(f"Category '{category_value}' not found, cannot add.")
-        return False
-
-    if session.query(MasterPDF).filter(MasterPDF.name == name).first():
-        logger.info(f"Master PDF '{name}' already exists, cannot add.")
-        return False
-
-    new_master_pdf = MasterPDF(
-        name=name,
-        category_id=category.id,
-        file_path=file_path
-    )
-    session.add(new_master_pdf)
-    return True
-
-@with_session
-def get_db_masterpdf(value: str | int, session: Session) -> MasterPDF:
-    """
-    Get a master PDF from the database by name or ID.
-
-    Args:
-        value (str | int): The name or ID of the master PDF.
-        session (Session): An existing SQLAlchemy session. If not provided, a new session
-                           is created by the `@with_session` decorator.
-
-    Returns:
-        MasterPDF: The master PDF object if found.
-
-    Raises:
-        ValueError: If the value is empty or undefined.
-        ResourceNotFoundError: If the master PDF does not exist.
-    """
-    _validate_lookup_value(value)
-    
-    logger.debug("Attempting to retrieve MasterPDF:")
-
-    column = MasterPDF.id if isinstance(value, int) else MasterPDF.name
-    master_pdf = session.query(MasterPDF).filter(column == value).first()
-
-    if master_pdf:
-        return master_pdf
-    raise ResourceNotFoundError(f"MasterPDF '{value}' not found.")
-
-@with_session
-def add_db_pdf(name: str, 
-               master_pdf_value: str | int, 
-               file_path: str, 
-               session: Session,
-               master_page_number: Optional[int] = None,
-               file_type: Optional[str] = None,
-                ) -> bool:
-    """
-    Add a new PDF to the database, associated with a master PDF.
-    
-    Args:
-        name (str): The name of the PDF.
-        master_pdf_value (str | int): The name or ID of the master PDF this PDF belongs to.
-        file_path (str): The file path of the PDF.
-        session (Session): An existing SQLAlchemy session. If not provided, a new session
-                           is created by the `@with_session` decorator.
-        master_page_number (Optional[int]): The page number in the master PDF.
-        file_type (Optional[str]): The type of file (optional).
+        column = Category.id if isinstance(value, int) else Category.name
+        category = session.query(Category).filter(column == value).first()
         
-    Returns:
-        bool: True if PDF was added successfully, False if master PDF doesn't exist.
-    """
-    master_pdf = get_db_masterpdf(master_pdf_value, session=session)
-    
-    if not master_pdf:
-        logger.error(f"Master PDF '{master_pdf}' does not exist, cannot add PDF.")
-        return False
+        if category:
+            return category
+        raise ResourceNotFoundError(f"Category '{value}' not found.")
+
+    @with_session
+    def add_db_masterpdf(name:str, category_value:str | int, file_path:str, session: Session) -> bool:
+        """
+        Adds a new master PDF to the database.
+
+        Args:
+            name (str): The name of the master PDF.
+            category_name (str): The name of the category it belongs to.
+            file_path (str): The file path for the master PDF.
+            session (Session): An existing SQLAlchemy session. If not provided, a new session
+                            is created by the `@with_session` decorator.
+
+        Returns:
+            bool: True if the master PDF was added, False otherwise.
+        """
+        #find the category to add to
+        category = get_db_category(category_value, session=session)
+
+        if not category:
+            logger.error(f"Category '{category_value}' not found, cannot add.")
+            return False
+
+        if session.query(MasterPDF).filter(MasterPDF.name == name).first():
+            logger.info(f"Master PDF '{name}' already exists, cannot add.")
+            return False
+
+        new_master_pdf = MasterPDF(
+            name=name,
+            category_id=category.id,
+            file_path=file_path
+        )
+        session.add(new_master_pdf)
+        return True
+
+    @with_session
+    def get_db_masterpdf(value: str | int, session: Session) -> MasterPDF:
+        """
+        Get a master PDF from the database by name or ID.
+
+        Args:
+            value (str | int): The name or ID of the master PDF.
+            session (Session): An existing SQLAlchemy session. If not provided, a new session
+                            is created by the `@with_session` decorator.
+
+        Returns:
+            MasterPDF: The master PDF object if found.
+
+        Raises:
+            ValueError: If the value is empty or undefined.
+            ResourceNotFoundError: If the master PDF does not exist.
+        """
+        _validate_lookup_value(value)
         
-    page_number = _assign_page_number(master_pdf_id=master_pdf_value, session=session, target_page=master_page_number)
+        logger.debug("Attempting to retrieve MasterPDF:")
 
-    new_pdf = PDF(
-        name=name,
-        master_id=master_pdf.id,
-        file_path=file_path,
-        master_page_number=page_number,
-        file_type=file_type
-    )
-    session.add(new_pdf)
-    return True
+        column = MasterPDF.id if isinstance(value, int) else MasterPDF.name
+        master_pdf = session.query(MasterPDF).filter(column == value).first()
 
-@with_session
-def get_db_pdf(value: str | int, session: Session) -> PDF:
-    """
-    Get a PDF from the database by name or ID.
+        if master_pdf:
+            return master_pdf
+        raise ResourceNotFoundError(f"MasterPDF '{value}' not found.")
 
-    Args:
-        value (str | int): The name or ID of the PDF.
-        session (Session): An existing SQLAlchemy session. If not provided, a new session
-                           is created by the `@with_session` decorator.
+    @with_session
+    def add_db_pdf(name: str, 
+                master_pdf_value: str | int, 
+                file_path: str, 
+                session: Session,
+                master_page_number: Optional[int] = None,
+                file_type: Optional[str] = None,
+                    ) -> bool:
+        """
+        Add a new PDF to the database, associated with a master PDF.
+        
+        Args:
+            name (str): The name of the PDF.
+            master_pdf_value (str | int): The name or ID of the master PDF this PDF belongs to.
+            file_path (str): The file path of the PDF.
+            session (Session): An existing SQLAlchemy session. If not provided, a new session
+                            is created by the `@with_session` decorator.
+            master_page_number (Optional[int]): The page number in the master PDF.
+            file_type (Optional[str]): The type of file (optional).
+            
+        Returns:
+            bool: True if PDF was added successfully, False if master PDF doesn't exist.
+        """
+        master_pdf = get_db_masterpdf(master_pdf_value, session=session)
+        
+        if not master_pdf:
+            logger.error(f"Master PDF '{master_pdf}' does not exist, cannot add PDF.")
+            return False
+            
+        page_number = _assign_page_number(master_pdf_id=master_pdf_value, session=session, target_page=master_page_number)
 
-    Returns:
-        PDF: The PDF object if found.
+        new_pdf = PDF(
+            name=name,
+            master_id=master_pdf.id,
+            file_path=file_path,
+            master_page_number=page_number,
+            file_type=file_type
+        )
+        session.add(new_pdf)
+        return True
 
-    Raises:
-        ValueError: If the value is empty or undefined.
-        ResourceNotFoundError: If the PDF does not exist.
-    """
-    _validate_lookup_value(value)
+    @with_session
+    def get_db_pdf(value: str | int, session: Session) -> PDF:
+        """
+        Get a PDF from the database by name or ID.
 
-    logger.debug("Attempting to retrieve PDF:")
+        Args:
+            value (str | int): The name or ID of the PDF.
+            session (Session): An existing SQLAlchemy session. If not provided, a new session
+                            is created by the `@with_session` decorator.
 
-    column = PDF.id if isinstance(value, int) else PDF.name
-    pdf = session.query(PDF).filter(column == value).first()
+        Returns:
+            PDF: The PDF object if found.
 
-    if pdf:
-        return pdf
-    raise ResourceNotFoundError(f"PDF '{value}' not found.")
+        Raises:
+            ValueError: If the value is empty or undefined.
+            ResourceNotFoundError: If the PDF does not exist.
+        """
+        _validate_lookup_value(value)
+
+        logger.debug("Attempting to retrieve PDF:")
+
+        column = PDF.id if isinstance(value, int) else PDF.name
+        pdf = session.query(PDF).filter(column == value).first()
+
+        if pdf:
+            return pdf
+        raise ResourceNotFoundError(f"PDF '{value}' not found.")
