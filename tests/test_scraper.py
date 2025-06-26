@@ -6,7 +6,7 @@ from pdf_scraper import _normalize_url, _add_url, delete_pdf, _load_urls
 from utils import ValidationError, ResourceNotFoundError
 from database import (
     init_db,
-    get_db_session,
+    get_session,
     Category,
     MasterPDF,
     PDF,
@@ -303,23 +303,23 @@ class TestDB:
         
     #Fixture 2: create single session from engine for test
     @pytest.fixture(scope="function")
-    def db_session(db_engine):
+    def db_session(self, db_engine):
         "Provides a transactional session for a test."
-        with get_db_session(db_engine) as session:
+        with get_session(db_engine) as session:
             yield session
 
     #Fixture 3: Create service object using session
     @pytest.fixture(scope="function")
-    def db_service(db_session):
+    def db_service(self, db_session):
         "Provides a DatabaseService instance connected to the test session."
         return DatabaseService(session=db_session)
 
 
     def test_add_db_category_where_category_doesnt_exist_already(self, db_service: DatabaseService):
-        """Test that add_db_category correctly adds a new category to the database.
+        """Test that add_category correctly adds a new category to the database.
 
         Given: A database and a new category name
-        When: add_db_category is called with the category name
+        When: add_category is called with the category name
         Then: The category should be added to the database and return True
              If the category already exists, it should return False
 
@@ -327,15 +327,15 @@ class TestDB:
         """
         expected_category = "Knowledge_Base"
         
-        db_service.add_db_category(name="Knowledge_Base")
-        returned_category = db_service.get_db_category
+        db_service.add_category(expected_category)
+        returned_category = db_service.get_category(expected_category)
         assert returned_category.name == expected_category
 
-    def test_add_db_category_where_category_already_exists(self, test_db):
-        """Test that add_db_category returns False when category already exists.
+    def test_add_db_category_where_category_already_exists(self, db_service: DatabaseService):
+        """Test that add_category returns False when category already exists.
 
         Given: A database with an existing category
-        When: add_db_category is called with the same category name
+        When: add_category is called with the same category name
         Then: The function should return False
 
         Run with: python -m pytest tests/test_scraper.py::TestDB::test_add_db_category_where_category_already_exists -v
@@ -343,68 +343,82 @@ class TestDB:
         
         category_name = "Test_Category"
         # First add the category
-        with get_db_session(test_db) as session:
-            first_result = add_db_category(name=category_name, session=session)
-            assert first_result is True
+        first_result = db_service.add_category(category_name)
+        assert first_result is True
 
-            category_count = session.query(Category).filter(Category.name == category_name).count()
-            assert category_count == 1
+        category_count = db_service.session.query(Category).filter(Category.name == category_name).count()
+        assert category_count == 1
 
-            # Try to add it again
-            second_result = add_db_category(name=category_name, session=session)
-            assert second_result is False
+        # Try to add it again
+        second_result = db_service.add_category(category_name)
+        assert second_result is False
 
-            category_count = session.query(Category).filter(Category.name == category_name).count()
-            assert category_count == 1
+        category_count = db_service.session.query(Category).filter(Category.name == category_name).count()
+        assert category_count == 1
 
-    def test_add_db_category_where_category_is_empty(self, test_db):
-        """Test that add_db_category handles empty category names correctly.
+    def test_add_db_category_where_category_is_empty(self, db_service: DatabaseService):
+        """Test that add_category handles empty category names correctly.
 
         Given: A database with an existing category
-        When: add_db_category is called with an empty category name (whitespace)
+        When: add_category is called with an empty category name (whitespace)
         Then: The function should return False and not add the empty category
 
         Run with: python -m pytest tests/test_scraper.py::TestDB::test_add_db_category_where_category_is_empty -v
         """
         category_name = " "
 
-        with get_db_session(test_db) as session:
-            with pytest.raises(ValueError):
-                add_db_category(category_name, session=session)
+        with pytest.raises(ValueError):
+            db_service.add_category(category_name)
 
-    def test_add_masterpdf_where_pdf_doesnt_exist_already(self, test_db):
-        """Test that add_db_masterpdf correctly adds a new master PDF to the database.
+    def test_get_db_category_where_category_exists(self, db_service: DatabaseService):
+        """Test that get_category successfully retrieves an existing category.
+
+        Given: A category name that is added to the database.
+        When: get_category is called with that category name.
+        Then: The corresponding Category object should be returned.
+
+        Run with: python -m pytest tests/test_scraper.py::TestDB::test_get_db_category_where_category_exists -v
+        """
+        expected_category_name = "Test_Category"
+
+        db_service.add_category(expected_category_name)
+
+        retrieved_category = db_service.get_category(expected_category_name)
+        assert retrieved_category is not None
+        assert retrieved_category.name == expected_category_name
+
+    def test_add_masterpdf_where_pdf_doesnt_exist_already(self, db_service: DatabaseService):
+        """Test that add_masterpdf correctly adds a new master PDF to the database.
 
         Given: A database and a new master PDF name
-        When: add_db_masterpdf is called with the master PDF name
+        When: add_masterpdf is called with the master PDF name
         Then: The master PDF should be added to the database and the returned record
              should match the expected name
 
-        Run with: python -m pytest tests/test_scraper.py::TestDB::test_add_masterpdf_where_pdf_doesnt_exist_already_and_category_exists -v
+        Run with: python -m pytest tests/test_scraper.py::TestDB::test_add_masterpdf_where_pdf_doesnt_exist_already -v
         """
         expected_master_name = "Test_Master"
         expected_category_name = "Test_Category"
         expected_master_filepath = "T:/Test/Testing/Test.pdf"
 
-        with get_db_session(test_db) as session:
-            first_result = add_db_masterpdf(name=expected_master_name, category_name=expected_category_name, file_path=expected_master_filepath, session=session)
-            assert first_result is False
+        first_result = db_service.add_masterpdf(name=expected_master_name, category_value=expected_category_name, file_path=expected_master_filepath)
+        assert first_result is False
 
-            category_count = session.query(MasterPDF).filter(MasterPDF.name == expected_master_name).count()
-            assert category_count == 0
+        category_count = db_service.session.query(MasterPDF).filter(MasterPDF.name == expected_master_name).count()
+        assert category_count == 0
 
-            add_db_category(expected_category_name)
-            second_result = add_db_masterpdf(name=expected_master_name, category_name=expected_category_name, file_path=expected_master_filepath, session=session)
-            assert second_result is True
+        db_service.add_category(expected_category_name)
+        second_result = db_service.add_masterpdf(name=expected_master_name, category_value=expected_category_name, file_path=expected_master_filepath)
+        assert second_result is True
 
-            category_count = session.query(MasterPDF).filter(MasterPDF.name == expected_master_name).count()
-            assert category_count == 1
+        category_count = db_service.session.query(MasterPDF).filter(MasterPDF.name == expected_master_name).count()
+        assert category_count == 1
             
-    def test_add_masterpdf_where_pdf_exists_already(self, test_db):
-        """Test that add_db_masterpdf prevents duplicate master PDFs from being added.
+    def test_add_masterpdf_where_pdf_exists_already(self, db_service: DatabaseService):
+        """Test that add_masterpdf prevents duplicate master PDFs from being added.
 
         Given: A database with an existing master PDF
-        When: add_db_masterpdf is called with the same name
+        When: add_masterpdf is called with the same name
         Then: The function should return False and not add a duplicate entry
 
         Run with: python -m pytest tests/test_scraper.py::TestDB::test_add_masterpdf_where_pdf_exists_already -v
@@ -414,21 +428,20 @@ class TestDB:
         expected_category_name = "Test_Category"
         expected_master_filepath = "T:/Test/Testing/Test.pdf"
 
-        with get_db_session(test_db) as session:
-            add_db_masterpdf(name=expected_master_name, category_name=expected_category_name, file_path=expected_master_filepath, session=session)
+        db_service.add_masterpdf(name=expected_master_name, category_value=expected_category_name, file_path=expected_master_filepath)
 
-            first_result = add_db_masterpdf(name=expected_master_name, category_name=expected_category_name, file_path=expected_master_filepath, session=session)
-            assert first_result is False
+        first_result = db_service.add_masterpdf(name=expected_master_name, category_value=expected_category_name, file_path=expected_master_filepath)
+        assert first_result is False
 
-            category_count = session.query(MasterPDF).filter(MasterPDF.name == expected_master_name).count()
-            assert category_count == 0
+        category_count = db_service.session.query(MasterPDF).filter(MasterPDF.name == expected_master_name).count()
+        assert category_count == 0
         
-    def test_assign_page_number_where_no_targetpage_is_given(self, test_db):
+    def test_assign_page_number_where_no_targetpage_is_given(self, db_service: DatabaseService):
         """
-        Test that add_db_pdf assigns sequential master_page_number values when no target page is specified.
+        Test that add_pdf assigns sequential master_page_number values when no target page is specified.
 
         Given: A master PDF and category exist in the database.
-        When: add_db_pdf is called multiple times without specifying master_page_number.
+        When: add_pdf is called multiple times without specifying master_page_number.
         Then: The first PDF should be assigned master_page_number 0, the second 1, and so on.
 
         Run with: python -m pytest tests/test_scraper.py::TestDB::test_assign_page_number_where_no_targetpage_is_given -v
@@ -437,19 +450,18 @@ class TestDB:
         given_category_name = "Test_Category"
         given_master_filepath = "T:/Test/Testing/Test_Master.pdf"
 
-        with get_db_session(test_db) as session:
-            add_db_category(given_category_name, session=session)
-            add_db_masterpdf(given_master_name, given_category_name, given_master_filepath, session=session)
-        
-            assert add_db_pdf("Test_PDF1", given_master_name, file_path=None, session=session)
-            page1 = get_db_pdf("Test_PDF1", session=session).master_page_number
-            assert page1 == 0
+        db_service.add_category(given_category_name)
+        db_service.add_masterpdf(given_master_name, given_category_name, given_master_filepath)
+    
+        assert db_service.add_pdf("Test_PDF1", given_master_name, file_path=None)
+        page1 = db_service.get_pdf("Test_PDF1").master_page_number
+        assert page1 == 0
 
-            assert add_db_pdf("Test_PDF2", given_master_name, file_path=None, session=session)
-            page2 = get_db_pdf("Test_PDF2", session=session).master_page_number
-            assert page2 == 1
+        assert db_service.add_pdf("Test_PDF2", given_master_name, file_path=None)
+        page2 = db_service.get_pdf("Test_PDF2").master_page_number
+        assert page2 == 1
 
-    def test_assign_page_number_with_targetpage_given(self, test_db):
+    def test_assign_page_number_with_targetpage_given(self, db_service: DatabaseService):
         """
 
 
@@ -459,22 +471,21 @@ class TestDB:
         given_category_name = "Test_Category"
         given_master_filepath = "T:/Test/Testing/Test_Master.pdf"
 
-        with get_db_session(test_db) as session:
-            add_db_category(given_category_name, session=session)
-            add_db_masterpdf(given_master_name, given_category_name, given_master_filepath, session=session)
-            add_db_pdf("Test_PDF1", given_master_name, file_path=None, session=session)
-            add_db_pdf("Test_PDF2", given_master_name, file_path=None, session=session)
-            add_db_pdf("Test_PDF3", given_master_name, file_path=None, session=session)
-            page2 = get_db_pdf("Test_PDF2", session=session).master_page_number
-            assert page2 == 1
-            
-            assert add_db_pdf("Test_PDF4", given_master_name, file_path=None, session=session, master_page_number = 1)
-            page4 = get_db_pdf("Test_PDF4", session=session).master_page_number
-            assert page4 == 1
+        db_service.add_category(given_category_name)
+        db_service.add_masterpdf(given_master_name, given_category_name, given_master_filepath)
+        db_service.add_pdf("Test_PDF1", given_master_name, file_path=None)
+        db_service.add_pdf("Test_PDF2", given_master_name, file_path=None)
+        db_service.add_pdf("Test_PDF3", given_master_name, file_path=None)
+        page2 = db_service.get_pdf("Test_PDF2").master_page_number
+        assert page2 == 1
+        
+        assert db_service.add_pdf("Test_PDF4", given_master_name, file_path=None, master_page_number = 1)
+        page4 = db_service.get_pdf("Test_PDF4").master_page_number
+        assert page4 == 1
 
-            page1 = get_db_pdf("Test_PDF1", session=session).master_page_number
-            page2 = get_db_pdf("Test_PDF2", session=session).master_page_number
-            page3 = get_db_pdf("Test_PDF3", session=session).master_page_number
-            assert page1 == 0
-            assert page2 == 2
-            assert page3 == 3
+        page1 = db_service.get_pdf("Test_PDF1").master_page_number
+        page2 = db_service.get_pdf("Test_PDF2").master_page_number
+        page3 = db_service.get_pdf("Test_PDF3").master_page_number
+        assert page1 == 0
+        assert page2 == 2
+        assert page3 == 3

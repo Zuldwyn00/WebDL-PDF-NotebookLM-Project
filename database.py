@@ -108,14 +108,14 @@ def init_db(db_type: str = "sqlite", db_path: str = "pdf_scraper.db"):
 
     engine = create_engine(f"{db_type}:///{db_path}", echo=True)
     Base.metadata.create_all(engine)
-    #add global session as default, get_db_session() can be used with an optional engine param to make a new session with that engine
+    #add global session as default, get_session() can be used with an optional engine param to make a new session with that engine
     SessionFactory = sessionmaker(bind=engine)
     
     return engine
 
 # ─── SESSION MANAGEMENT ────────────────────────────────────────────────────────────────
 @contextmanager
-def get_db_session(engine=None):
+def get_session(engine=None):
     """
     Context manager for database sessions.
     Uses the global session factory or a provided engine.
@@ -145,7 +145,7 @@ def with_session(func):
     This decorator inspects the keyword arguments of the function it wraps.
     If a `session` keyword argument is already provided and is not None, it
     uses that session. Otherwise, it creates a new session using the
-    `get_db_session` context manager and injects it into the keyword
+    `get_session` context manager and injects it into the keyword
     arguments as `session`.
 
     This pattern ensures that database functions can either participate in an
@@ -158,7 +158,7 @@ def with_session(func):
         if 'session' in kwargs and kwargs.get('session') is not None:
             return func(*args, **kwargs)
         else:
-            with get_db_session() as new_session:
+            with get_session() as new_session:
                 kwargs['session'] = new_session
                 return func(*args, **kwargs)
     
@@ -190,16 +190,71 @@ def process_new_pdf(file_path: str, category_name: str, master_pdf_id: str | int
 
     try:
         get_masterpdf(master_pdf_id)
-    except someerrorhere
-        add_masterpdf(master_pdf_id) #verify is a name, dont add a category as an ID number
+    except ResourceNotFoundError:
+        # The line below is a placeholder and will cause errors at runtime
+        # add_masterpdf(master_pdf_id) #verify is a name, dont add a category as an ID number
+        pass
 
 
-    add_pdf(add to DB first)
-    your_masterpdf_adding_logic_here(master_pdf_path)
+    # add_pdf(...) #add to DB first
+    # your_masterpdf_adding_logic_here(master_pdf_path)
+    pass
 
 class DatabaseService:
     def __init__(self, session: Session):
         self.session = session
+
+    def _assign_page_number(self, master_pdf_id: str | int, target_page: Optional[int] = None) -> int:
+        """
+        Assigns a page number for a new PDF in relation to existing PDFs in the master document.
+        
+        This function handles page number assignment with special consideration for PDFs that span
+        multiple pages. When inserting at a specific target page, it ensures no content is overwritten
+        by shifting existing PDFs forward.
+        
+        Args:
+            master_pdf_id (int): Name or ID of the master PDF document
+            target_page (Optional[int]): Desired page number for insertion. If None, appends to end.
+            
+        Returns:
+            int: The assigned page number
+            
+        Note:
+            When inserting between existing PDFs, the target page is adjusted to avoid splitting
+            existing PDFs. For example, if inserting at page 13 between PDFs spanning pages 10-14
+            and 15-20, the insertion point is adjusted to page 15 to maintain PDF integrity.
+        """
+        _validate_lookup_value(master_pdf_id)
+
+        master_pdf = self.get_masterpdf(master_pdf_id)
+        existing_pdfs = sorted(master_pdf.PDF, key=lambda x: x.master_page_number)
+        if not existing_pdfs:
+            return 0
+
+        highest_page = existing_pdfs[-1].master_page_number
+
+        if target_page is None or target_page > highest_page:
+            if target_page and target_page > highest_page:
+                logger.info(f"Target page '{target_page}' creates a gap. "
+                f"Assinging as next available page at: '{highest_page + 1}'")
+            return highest_page + 1
+
+        # Check if target_page requires shifting existing PDFs
+        pdfs_to_shift = [pdf for pdf in existing_pdfs if pdf.master_page_number >= target_page]
+        if not pdfs_to_shift:
+            
+            return highest_page + 1
+        else:
+            # Important: We set target_page to the start of the next PDF to avoid splitting existing PDFs
+            # For example, if inserting at page 13 between PDFs at pages 10-14 and 15-20,
+            # we insert at page 15 to maintain PDF integrity
+            new_target_page = pdfs_to_shift[0].master_page_number
+            logger.info(f"Page number '{target_page}' requires shifting {len(pdfs_to_shift)} pdfs. New target page is {new_target_page}")
+
+            for pdf in reversed(pdfs_to_shift):
+                pdf.master_page_number += 1
+            
+            return new_target_page
 
     def add_category(self, name:str) -> bool:
         """
@@ -242,6 +297,7 @@ class DatabaseService:
         
         if category:
             return category
+            
         raise ResourceNotFoundError(f"Category '{value}' not found.")
 
     def add_masterpdf(self, name:str, category_value:str | int, file_path:str) -> bool:
@@ -259,9 +315,9 @@ class DatabaseService:
         _validate_lookup_value(name)
 
         #find the category to add to
-        category = self.get_category(category_value)
-
-        if not category:
+        try:
+            category = self.get_category(category_value)
+        except ResourceNotFoundError: 
             logger.error(f"Category '{category_value}' not found, cannot add.")
             return False
 
@@ -275,6 +331,7 @@ class DatabaseService:
             file_path=file_path
         )
         self.session.add(new_master_pdf)
+
         return True
 
     def get_masterpdf(self, value: str | int) -> MasterPDF:
@@ -330,7 +387,7 @@ class DatabaseService:
             logger.error(f"Master PDF '{master_pdf}' does not exist, cannot add PDF.")
             return False
             
-        page_number = _assign_page_number(master_pdf_id=master_pdf_value, session=self.session, target_page=master_page_number)
+        page_number = self._assign_page_number(master_pdf_id=master_pdf_value, target_page=master_page_number)
 
         new_pdf = PDF(
             name=name,
@@ -366,55 +423,3 @@ class DatabaseService:
         if pdf:
             return pdf
         raise ResourceNotFoundError(f"PDF '{value}' not found.")
-
-    def _assign_page_number(self, master_pdf_id: str | int, target_page: Optional[int] = None) -> int:
-        """
-        Assigns a page number for a new PDF in relation to existing PDFs in the master document.
-        
-        This function handles page number assignment with special consideration for PDFs that span
-        multiple pages. When inserting at a specific target page, it ensures no content is overwritten
-        by shifting existing PDFs forward.
-        
-        Args:
-            master_pdf_id (int): Name or ID of the master PDF document
-            target_page (Optional[int]): Desired page number for insertion. If None, appends to end.
-            
-        Returns:
-            int: The assigned page number
-            
-        Note:
-            When inserting between existing PDFs, the target page is adjusted to avoid splitting
-            existing PDFs. For example, if inserting at page 13 between PDFs spanning pages 10-14
-            and 15-20, the insertion point is adjusted to page 15 to maintain PDF integrity.
-        """
-        _validate_lookup_value(master_pdf_id)
-
-        master_pdf = self.get_masterpdf(master_pdf_id)
-        existing_pdfs = sorted(master_pdf.PDF, key=lambda x: x.master_page_number)
-        if not existing_pdfs:
-            return 0
-
-        highest_page = existing_pdfs[-1].master_page_number
-
-        if target_page is None or target_page > highest_page:
-            if target_page and target_page > highest_page:
-                logger.info(f"Target page '{target_page}' creates a gap. "
-                f"Assinging as next available page at: '{highest_page + 1}'")
-            return highest_page + 1
-
-        # Check if target_page requires shifting existing PDFs
-        pdfs_to_shift = [pdf for pdf in existing_pdfs if pdf.master_page_number >= target_page]
-        if not pdfs_to_shift:
-            
-            return highest_page + 1
-        else:
-            # Important: We set target_page to the start of the next PDF to avoid splitting existing PDFs
-            # For example, if inserting at page 13 between PDFs at pages 10-14 and 15-20,
-            # we insert at page 15 to maintain PDF integrity
-            new_target_page = pdfs_to_shift[0].master_page_number
-            logger.info(f"Page number '{target_page}' requires shifting {len(pdfs_to_shift)} pdfs. New target page is {new_target_page}")
-
-            for pdf in reversed(pdfs_to_shift):
-                pdf.master_page_number += 1
-            
-            return new_target_page

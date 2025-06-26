@@ -34,7 +34,6 @@ __version__ = "2.0"
 __date__ = "2025-05-23"
 
 # External imports
-from curses import keyname
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -56,13 +55,11 @@ import pymupdf, ocrmypdf
 # Local imports
 from transcribe_video import transcribe_video, combine_transcript
 from database import (
-    with_session,
-    get_db_category,
-    get_db_masterpdf,
-    get_db_pdf,
-    add_db_category,
-    add_db_masterpdf,
-    add_db_pdf,
+    get_session,
+    Category,
+    MasterPDF,
+    PDF,
+    DatabaseService,
 )
 from utils import (
     PDFProcessingError,
@@ -434,6 +431,8 @@ def with_pdf(pdf_key_arg: str | int = "master_pdf_id"):
             doc = None
             try:
                 master_pdf_obj = get_db_masterpdf(pdf_key)
+            except:
+                pass
 
         
 
