@@ -7,15 +7,11 @@ from utils import ValidationError, ResourceNotFoundError
 from database import (
     init_db,
     get_db_session,
-    add_db_category,
     Category,
-    add_db_masterpdf,
     MasterPDF,
-    add_db_pdf,
-    get_db_pdf,
+    PDF,
+    DatabaseService,
 )
-
-
 
 
 class TestNormalizeURL:
@@ -296,15 +292,30 @@ class TestDB:
     """
     Test cases for the databases functions
     """
+    #Fixture 1: Temporary database engine
     @pytest.fixture(scope="function")
-    def test_db(self):
+    def db_engine(self):
         """Fixture to create a fresh in-memory database for each test."""
         # Initialize in-memory database
         engine = init_db(db_path=":memory:", db_type="sqlite")
         return engine
         # Cleanup happens automatically when the in-memory database is closed
         
-    def test_add_db_category_where_category_doesnt_exist_already(self, test_db):
+    #Fixture 2: create single session from engine for test
+    @pytest.fixture(scope="function")
+    def db_session(db_engine):
+        "Provides a transactional session for a test."
+        with get_db_session(db_engine) as session:
+            yield session
+
+    #Fixture 3: Create service object using session
+    @pytest.fixture(scope="function")
+    def db_service(db_session):
+        "Provides a DatabaseService instance connected to the test session."
+        return DatabaseService(session=db_session)
+
+
+    def test_add_db_category_where_category_doesnt_exist_already(self, db_service: DatabaseService):
         """Test that add_db_category correctly adds a new category to the database.
 
         Given: A database and a new category name
@@ -316,11 +327,9 @@ class TestDB:
         """
         expected_category = "Knowledge_Base"
         
-        # Use a session context manager to keep the session open while accessing the category
-        with get_db_session(test_db) as session:
-            add_db_category(name="Knowledge_Base", session=session)
-            returned_category = session.query(Category).filter(Category.name == "Knowledge_Base").first()
-            assert returned_category.name == expected_category
+        db_service.add_db_category(name="Knowledge_Base")
+        returned_category = db_service.get_db_category
+        assert returned_category.name == expected_category
 
     def test_add_db_category_where_category_already_exists(self, test_db):
         """Test that add_db_category returns False when category already exists.

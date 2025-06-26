@@ -181,121 +181,55 @@ def _validate_lookup_value(value) -> None:
     if not value or (isinstance(value, str) and not value.strip()):
         raise ValueError("Value cannot be empty or undefined.")
     
-@with_session
-def _assign_page_number(master_pdf_id: str | int, session: Session, target_page: Optional[int] = None) -> int:
-    """
-    Assigns a page number for a new PDF in relation to existing PDFs in the master document.
-    
-    This function handles page number assignment with special consideration for PDFs that span
-    multiple pages. When inserting at a specific target page, it ensures no content is overwritten
-    by shifting existing PDFs forward.
-    
-    Args:
-        master_pdf_id (int): Name or ID of the master PDF document
-        session (Session): Database session
-        target_page (Optional[int]): Desired page number for insertion. If None, appends to end.
-        
-    Returns:
-        int: The assigned page number
-        
-    Note:
-        When inserting between existing PDFs, the target page is adjusted to avoid splitting
-        existing PDFs. For example, if inserting at page 13 between PDFs spanning pages 10-14
-        and 15-20, the insertion point is adjusted to page 15 to maintain PDF integrity.
-    """
-    _validate_lookup_value(master_pdf_id)
-
-    master_pdf = get_db_masterpdf(master_pdf_id, session=session)
-    
-    existing_pdfs = sorted(master_pdf.PDF, key=lambda x: x.master_page_number)
-    
-    if not existing_pdfs:
-        return 0
-
-    highest_page = existing_pdfs[-1].master_page_number
-
-    if target_page is None or target_page > highest_page:
-        if target_page and target_page > highest_page:
-            logger.info(f"Target page '{target_page}' creates a gap. "
-            f"Assinging as next available page at: '{highest_page + 1}'")
-        return highest_page + 1
-
-    # Check if target_page requires shifting existing PDFs
-    pdfs_to_shift = [pdf for pdf in existing_pdfs if pdf.master_page_number >= target_page]
-    if not pdfs_to_shift:
-        
-        return highest_page + 1
-    
-    else:
-        # Important: We set target_page to the start of the next PDF to avoid splitting existing PDFs
-        # For example, if inserting at page 13 between PDFs at pages 10-14 and 15-20,
-        # we insert at page 15 to maintain PDF integrity
-        new_target_page = pdfs_to_shift[0].master_page_number
-        logger.info(f"Page number '{target_page}' requires shifting {len(pdfs_to_shift)} pdfs. New target page is {new_target_page}")
-        
-        for pdf in reversed(pdfs_to_shift):
-            pdf.master_page_number += 1
-        
-        
-        return new_target_page
-
 # ─── DATABASE OPERATIONS ───────────────────────────────────────────────────────────────
 def process_new_pdf(file_path: str, category_name: str, master_pdf_id: str | int):
     "Orchestrator to handle processing and adding a new pdf to the database and to the masterpdf file itself, the orc"
     try:
-        get_db_category(category_name)
+        get_category(category_name)
     except ResourceNotFoundError:
-        add_db_category(category_name)
+        add_category(category_name)
         logger.info("Category %s not found, creating new category", category_name)
 
     try:
-        get_db_masterpdf(master_pdf_id)
+        get_masterpdf(master_pdf_id)
     except someerrorhere
-        add_db_masterpdf(master_pdf_id) #verify is a name, dont add a category as an ID number
+        add_masterpdf(master_pdf_id) #verify is a name, dont add a category as an ID number
 
 
-    add_db_pdf(add to DB first)
+    add_pdf(add to DB first)
     your_masterpdf_adding_logic_here(master_pdf_path)
-
 
 class DatabaseService:
     def __init__(self, session: Session):
         self.session = session
 
-    @with_session
-    def add_db_category(name:str, session: Session) -> bool:
+    def add_category(self, name:str) -> bool:
         """
         Add a new category to the database if it doesn't already exist.
         
         Args:
             name (str): The name of the category to add.
-            session (Session): An existing SQLAlchemy session. If not provided, a new session
-                            is created by the `@with_session` decorator.
             
         Returns:
             bool: True if category was added, False if it already existed.
         """
-        if not name or not name.strip():
-                raise ValueError("Category name cannot be empty.")
+        _validate_lookup_value(name)
         
-        category = session.query(Category).filter(Category.name == name).first()
+        category = self.session.query(Category).filter(Category.name == name).first()
         if category:
             logger.info("Category already exists, cannot add.")
             return False
         new_category = Category(name=name)
-        session.add(new_category)
+        self.session.add(new_category)
         return True
 
-    @with_session
-    def get_db_category(value: str | int, session: Session) -> Category:
+    def get_category(self, value: str | int) -> Category:
         """
         Get a category from the database by name.
         
         Args:
             value (str | int): The name or ID of the category.
-            session (Session): An existing SQLAlchemy session. If not provided, a new session
-                            is created by the `@with_session` decorator.
-            
+
         Returns:
             Category: The category object if found.
             
@@ -306,14 +240,13 @@ class DatabaseService:
         logger.debug("Attempting to retrieve category:")
 
         column = Category.id if isinstance(value, int) else Category.name
-        category = session.query(Category).filter(column == value).first()
+        category = self.session.query(Category).filter(column == value).first()
         
         if category:
             return category
         raise ResourceNotFoundError(f"Category '{value}' not found.")
 
-    @with_session
-    def add_db_masterpdf(name:str, category_value:str | int, file_path:str, session: Session) -> bool:
+    def add_masterpdf(self, name:str, category_value:str | int, file_path:str) -> bool:
         """
         Adds a new master PDF to the database.
 
@@ -321,20 +254,20 @@ class DatabaseService:
             name (str): The name of the master PDF.
             category_name (str): The name of the category it belongs to.
             file_path (str): The file path for the master PDF.
-            session (Session): An existing SQLAlchemy session. If not provided, a new session
-                            is created by the `@with_session` decorator.
 
         Returns:
             bool: True if the master PDF was added, False otherwise.
         """
+        _validate_lookup_value(name)
+
         #find the category to add to
-        category = get_db_category(category_value, session=session)
+        category = self.get_category(category_value)
 
         if not category:
             logger.error(f"Category '{category_value}' not found, cannot add.")
             return False
 
-        if session.query(MasterPDF).filter(MasterPDF.name == name).first():
+        if self.session.query(MasterPDF).filter(MasterPDF.name == name).first():
             logger.info(f"Master PDF '{name}' already exists, cannot add.")
             return False
 
@@ -343,18 +276,15 @@ class DatabaseService:
             category_id=category.id,
             file_path=file_path
         )
-        session.add(new_master_pdf)
+        self.session.add(new_master_pdf)
         return True
 
-    @with_session
-    def get_db_masterpdf(value: str | int, session: Session) -> MasterPDF:
+    def get_masterpdf(self, value: str | int) -> MasterPDF:
         """
         Get a master PDF from the database by name or ID.
 
         Args:
             value (str | int): The name or ID of the master PDF.
-            session (Session): An existing SQLAlchemy session. If not provided, a new session
-                            is created by the `@with_session` decorator.
 
         Returns:
             MasterPDF: The master PDF object if found.
@@ -368,17 +298,16 @@ class DatabaseService:
         logger.debug("Attempting to retrieve MasterPDF:")
 
         column = MasterPDF.id if isinstance(value, int) else MasterPDF.name
-        master_pdf = session.query(MasterPDF).filter(column == value).first()
+        master_pdf = self.session.query(MasterPDF).filter(column == value).first()
 
         if master_pdf:
             return master_pdf
         raise ResourceNotFoundError(f"MasterPDF '{value}' not found.")
 
-    @with_session
-    def add_db_pdf(name: str, 
+    def add_pdf(self,
+                name: str, 
                 master_pdf_value: str | int, 
                 file_path: str, 
-                session: Session,
                 master_page_number: Optional[int] = None,
                 file_type: Optional[str] = None,
                     ) -> bool:
@@ -389,21 +318,21 @@ class DatabaseService:
             name (str): The name of the PDF.
             master_pdf_value (str | int): The name or ID of the master PDF this PDF belongs to.
             file_path (str): The file path of the PDF.
-            session (Session): An existing SQLAlchemy session. If not provided, a new session
-                            is created by the `@with_session` decorator.
             master_page_number (Optional[int]): The page number in the master PDF.
             file_type (Optional[str]): The type of file (optional).
             
         Returns:
             bool: True if PDF was added successfully, False if master PDF doesn't exist.
         """
-        master_pdf = get_db_masterpdf(master_pdf_value, session=session)
+        _validate_lookup_value(name)
+
+        master_pdf = self.get_masterpdf(master_pdf_value)
         
         if not master_pdf:
             logger.error(f"Master PDF '{master_pdf}' does not exist, cannot add PDF.")
             return False
             
-        page_number = _assign_page_number(master_pdf_id=master_pdf_value, session=session, target_page=master_page_number)
+        page_number = _assign_page_number(master_pdf_id=master_pdf_value, session=self.session, target_page=master_page_number)
 
         new_pdf = PDF(
             name=name,
@@ -412,18 +341,15 @@ class DatabaseService:
             master_page_number=page_number,
             file_type=file_type
         )
-        session.add(new_pdf)
+        self.session.add(new_pdf)
         return True
 
-    @with_session
-    def get_db_pdf(value: str | int, session: Session) -> PDF:
+    def get_pdf(self, value: str | int) -> PDF:
         """
         Get a PDF from the database by name or ID.
 
         Args:
-            value (str | int): The name or ID of the PDF.
-            session (Session): An existing SQLAlchemy session. If not provided, a new session
-                            is created by the `@with_session` decorator.
+            value (str | int): The name or ID of the PDF..
 
         Returns:
             PDF: The PDF object if found.
@@ -437,8 +363,60 @@ class DatabaseService:
         logger.debug("Attempting to retrieve PDF:")
 
         column = PDF.id if isinstance(value, int) else PDF.name
-        pdf = session.query(PDF).filter(column == value).first()
+        pdf = self.session.query(PDF).filter(column == value).first()
 
         if pdf:
             return pdf
         raise ResourceNotFoundError(f"PDF '{value}' not found.")
+
+    def _assign_page_number(self, master_pdf_id: str | int, target_page: Optional[int] = None) -> int:
+        """
+        Assigns a page number for a new PDF in relation to existing PDFs in the master document.
+        
+        This function handles page number assignment with special consideration for PDFs that span
+        multiple pages. When inserting at a specific target page, it ensures no content is overwritten
+        by shifting existing PDFs forward.
+        
+        Args:
+            master_pdf_id (int): Name or ID of the master PDF document
+            target_page (Optional[int]): Desired page number for insertion. If None, appends to end.
+            
+        Returns:
+            int: The assigned page number
+            
+        Note:
+            When inserting between existing PDFs, the target page is adjusted to avoid splitting
+            existing PDFs. For example, if inserting at page 13 between PDFs spanning pages 10-14
+            and 15-20, the insertion point is adjusted to page 15 to maintain PDF integrity.
+        """
+        _validate_lookup_value(master_pdf_id)
+
+        master_pdf = self.get_masterpdf(master_pdf_id)
+        existing_pdfs = sorted(master_pdf.PDF, key=lambda x: x.master_page_number)
+        if not existing_pdfs:
+            return 0
+
+        highest_page = existing_pdfs[-1].master_page_number
+
+        if target_page is None or target_page > highest_page:
+            if target_page and target_page > highest_page:
+                logger.info(f"Target page '{target_page}' creates a gap. "
+                f"Assinging as next available page at: '{highest_page + 1}'")
+            return highest_page + 1
+
+        # Check if target_page requires shifting existing PDFs
+        pdfs_to_shift = [pdf for pdf in existing_pdfs if pdf.master_page_number >= target_page]
+        if not pdfs_to_shift:
+            
+            return highest_page + 1
+        else:
+            # Important: We set target_page to the start of the next PDF to avoid splitting existing PDFs
+            # For example, if inserting at page 13 between PDFs at pages 10-14 and 15-20,
+            # we insert at page 15 to maintain PDF integrity
+            new_target_page = pdfs_to_shift[0].master_page_number
+            logger.info(f"Page number '{target_page}' requires shifting {len(pdfs_to_shift)} pdfs. New target page is {new_target_page}")
+
+            for pdf in reversed(pdfs_to_shift):
+                pdf.master_page_number += 1
+            
+            return new_target_page
