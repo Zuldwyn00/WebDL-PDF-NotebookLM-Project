@@ -46,7 +46,6 @@ class Category(Base):
 
     master_PDF: Mapped[List["MasterPDF"]] = relationship(back_populates="category")
 
-
 class MasterPDF(Base):
     __tablename__ = "master_PDF"
 
@@ -61,7 +60,6 @@ class MasterPDF(Base):
 
     category: Mapped["Category"] = relationship(back_populates="master_PDF")
     PDF: Mapped[List["PDF"]] = relationship(back_populates="master_pdf")
-
 
 class PDF(Base):
     __tablename__ = "PDF"
