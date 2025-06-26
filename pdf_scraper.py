@@ -22,6 +22,9 @@ Date: 2025-05-23
 
 # 4) # Fix error where sometimes pages dont delete properly giving an invalid dict key mupdf error.
 
+# 5) Clean up unneccesary try and except blocks to make code more readable, focus on if the error can be fixed, then use a try except block
+#    if the error cannot be fixed, raise an exception instead of doing a whole try except block
+
 # INPROGRESS:
 
 # 4) Could change to use a database instead of json file if we want to scale up.
@@ -43,7 +46,6 @@ from datetime import datetime
 from urllib.parse import urlparse, urlunparse
 from pathlib import Path
 from tqdm import tqdm
-from itertools import dropwhile
 import os, base64
 import json
 import pymupdf, ocrmypdf
@@ -798,6 +800,16 @@ def delete_pdf(pdf_key: str, status: str = "PEND", delete_from_database: bool = 
 
     _save_urls(pdf_dict)
 
+def add_pdf(pdf_key: str, target_page: int) -> bool:
+    """Adds a PDF from database into a master, can specify where with target_page which will shift all pages over to allow room
+    returns True if successful, false if failure"""
+    pdf_dict = _load_urls()
+
+
+
+
+
+    return False
 
 # ─── SAVING ─────────────────────────────────────────────────────────────────────────
 

@@ -1,3 +1,8 @@
+#TODO
+
+#1) Complete backup methods
+
+
 import logging
 import re
 from pathlib import Path
@@ -28,6 +33,8 @@ class ProcessingError(ScraperError):
 
 class PDFProcessingError(ProcessingError):
     """Raised when the PDF manipulation/creation process fails"""
+
+    pass
 
 
 class ValidationError(ScraperError):
@@ -246,6 +253,13 @@ def get_highest_index(paths: List[Path], prefix: str) -> int:
         if m:
             indices.append(int(m.group(1)))
     return max(indices) if indices else 0
-    
 
-    
+
+# ─── FILE BACKUP ────────────────────────────────────────────────────────────
+def backup_file(file_path: str):
+    """Backs up the file at the specified path and puts a copy into the backups folder"""
+    pass
+
+def load_backup(file_path: str):
+    """Replaces file with backup of the same name"""
+

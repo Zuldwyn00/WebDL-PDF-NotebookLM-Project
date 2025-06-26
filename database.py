@@ -9,6 +9,9 @@
 
 #3) Make one method that handles adding categories, pdfs, and masters
 
+#4) Use a @validate_value decorator to make all commands go through it to validate their values are acceptable instead
+
+
 from sqlalchemy import create_engine, ForeignKey
 from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
 from datetime import datetime
@@ -238,7 +241,7 @@ def _assign_page_number(master_pdf_id: str | int, session: Session, target_page:
 
 # ─── DATABASE OPERATIONS ────────────────────────────────────────────────────────────────
 def process_new_pdf(file_path: str, category_name: str, master_pdf_id: str | int):
-    "Orchestrator to handle processing and adding a new pdf to the database and to the masterpdf file itself"
+    "Orchestrator to handle processing and adding a new pdf to the database and to the masterpdf file itself, the orc"
     try:
         get_db_category(category_name)
     except ResourceNotFoundError:
@@ -253,8 +256,6 @@ def process_new_pdf(file_path: str, category_name: str, master_pdf_id: str | int
 
     add_db_pdf(add to DB first)
     your_masterpdf_adding_logic_here(master_pdf_path)
-
-     
 
 @with_session
 def add_db_category(name:str, session: Session) -> bool:
