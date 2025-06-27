@@ -46,6 +46,7 @@ from datetime import datetime
 from pathlib import Path
 from tqdm import tqdm
 from functools import wraps
+from urllib.parse import urlparse, urlunparse
 import os, base64
 import json
 import pymupdf, ocrmypdf

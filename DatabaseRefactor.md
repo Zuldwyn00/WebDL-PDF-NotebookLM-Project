@@ -92,4 +92,4 @@ This document outlines the necessary steps to refactor `pdf_scraper.py` from usi
 -   [ ] Remove all dead code related to the old JSON system.
 -   [ ] Update docstrings in `pdf_scraper.py` to reflect the new database interactions and remove references to `saved_links` dict.
 -   [ ] Review all logging messages to ensure they are still relevant.
-    [ ] Update requirements.txt with new imports from database
+    [ ] Update requirements.txt with new imports from database and schemas

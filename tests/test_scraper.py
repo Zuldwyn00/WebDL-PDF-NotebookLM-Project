@@ -1,9 +1,11 @@
 import pytest
 import pymupdf
+from pydantic import ValidationError
 
 #local imports
 from pdf_scraper import _normalize_url, _add_url, delete_pdf, _load_urls
-from utils import ValidationError, ResourceNotFoundError
+from utils import ResourceNotFoundError
+import schemas
 from database import (
     init_db,
     get_session,
@@ -325,11 +327,11 @@ class TestDB:
 
         Run with: python -m pytest tests/test_scraper.py::TestDB::test_add_db_category_where_category_doesnt_exist_already -v
         """
-        expected_category = "Knowledge_Base"
+        expected_category_data = schemas.CategoryCreate(**{'name': "Test_Category"})
         
-        db_service.add_category(expected_category)
-        returned_category = db_service.get_category(expected_category)
-        assert returned_category.name == expected_category
+        db_service.add_category(expected_category_data)
+        returned_category = db_service.get_category(expected_category_data.name)
+        assert returned_category.name == expected_category_data.name
 
     def test_add_db_category_where_category_already_exists(self, db_service: DatabaseService):
         """Test that add_category returns False when category already exists.
@@ -343,32 +345,35 @@ class TestDB:
         
         category_name = "Test_Category"
         # First add the category
-        first_result = db_service.add_category(category_name)
+        first_result = db_service.add_category(schemas.CategoryCreate(name=category_name))
         assert first_result is True
 
         category_count = db_service.session.query(Category).filter(Category.name == category_name).count()
         assert category_count == 1
 
         # Try to add it again
-        second_result = db_service.add_category(category_name)
+        second_result = db_service.add_category(schemas.CategoryCreate(name=category_name))
         assert second_result is False
 
         category_count = db_service.session.query(Category).filter(Category.name == category_name).count()
         assert category_count == 1
 
-    def test_add_db_category_where_category_is_empty(self, db_service: DatabaseService):
-        """Test that add_category handles empty category names correctly.
+    def test_add_db_category_where_category_is_empty(self):
+        """Test that CategoryCreate schema validation fails for empty names.
 
-        Given: A database with an existing category
-        When: add_category is called with an empty category name (whitespace)
-        Then: The function should return False and not add the empty category
+        Given: An empty string for a category name.
+        When: A CategoryCreate object is instantiated.
+        Then: A pydantic.ValidationError should be raised.
 
         Run with: python -m pytest tests/test_scraper.py::TestDB::test_add_db_category_where_category_is_empty -v
         """
-        category_name = " "
-
-        with pytest.raises(ValueError):
-            db_service.add_category(category_name)
+        failed = False
+        try:
+            schemas.CategoryCreate(name="       ")
+        except ValidationError:
+            failed = True
+        
+        assert failed, "CategoryCreate did not raise ValidationError for an empty name."
 
     def test_get_db_category_where_category_exists(self, db_service: DatabaseService):
         """Test that get_category successfully retrieves an existing category.
@@ -379,13 +384,13 @@ class TestDB:
 
         Run with: python -m pytest tests/test_scraper.py::TestDB::test_get_db_category_where_category_exists -v
         """
-        expected_category_name = "Test_Category"
+        expected_category_data = schemas.CategoryCreate(**{'name': "Test_Category"})
 
-        db_service.add_category(expected_category_name)
+        db_service.add_category(expected_category_data)
 
-        retrieved_category = db_service.get_category(expected_category_name)
+        retrieved_category = db_service.get_category(expected_category_data.name)
         assert retrieved_category is not None
-        assert retrieved_category.name == expected_category_name
+        assert retrieved_category.name == expected_category_data.name
 
     def test_add_masterpdf_where_pdf_doesnt_exist_already(self, db_service: DatabaseService):
         """Test that add_masterpdf correctly adds a new master PDF to the database.
@@ -397,21 +402,22 @@ class TestDB:
 
         Run with: python -m pytest tests/test_scraper.py::TestDB::test_add_masterpdf_where_pdf_doesnt_exist_already -v
         """
-        expected_master_name = "Test_Master"
-        expected_category_name = "Test_Category"
-        expected_master_filepath = "T:/Test/Testing/Test.pdf"
+        expected_category_data = schemas.CategoryCreate(**{'name': "Test_Category"})
+        expected_masterpdf_data = schemas.MasterPDFCreate(name="Test_Master", file_path=r"C:\Users\Justin\Desktop\NotepadLM_PDFScraper_V1.5\tests\TestFiles\TestPDF.pdf", category_value=expected_category_data.name)
 
-        first_result = db_service.add_masterpdf(name=expected_master_name, category_value=expected_category_name, file_path=expected_master_filepath)
+        # Try to add before category exists, should fail
+        first_result = db_service.add_masterpdf(expected_masterpdf_data)
         assert first_result is False
 
-        category_count = db_service.session.query(MasterPDF).filter(MasterPDF.name == expected_master_name).count()
+        category_count = db_service.session.query(MasterPDF).filter(MasterPDF.name == expected_masterpdf_data.name).count()
         assert category_count == 0
 
-        db_service.add_category(expected_category_name)
-        second_result = db_service.add_masterpdf(name=expected_master_name, category_value=expected_category_name, file_path=expected_master_filepath)
+        # Add category, then add master pdf, should succeed
+        db_service.add_category(expected_category_data)
+        second_result = db_service.add_masterpdf(expected_masterpdf_data)
         assert second_result is True
 
-        category_count = db_service.session.query(MasterPDF).filter(MasterPDF.name == expected_master_name).count()
+        category_count = db_service.session.query(MasterPDF).filter(MasterPDF.name == expected_masterpdf_data.name).count()
         assert category_count == 1
             
     def test_add_masterpdf_where_pdf_exists_already(self, db_service: DatabaseService):

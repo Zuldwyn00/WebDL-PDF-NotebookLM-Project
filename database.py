@@ -23,11 +23,13 @@ from functools import wraps
 from urllib.parse import urlparse, urlunparse
 
 #Local Imports
-from utils import (ValidationError, load_config, 
+import schemas
+from utils import (ValidationError, 
+                   load_config, 
                    setup_logger,
                    ResourceNotFoundError,
                    ValidationError,
-                )
+)
 
 # ─── LOGGER & CONFIG ────────────────────────────────────────────────────────────────
 config = load_config()
@@ -300,27 +302,27 @@ class DatabaseService:
             
             return new_target_page
 
-    def add_category(self, name:str) -> bool:
+    def add_category(self, category_data: schemas.CategoryCreate) -> bool:
         """
         Add a new category to the database if it doesn't already exist.
-        
         Args:
-            name (str): The name of the category to add.
+            category_data (schemas.CategoryCreate): Pydantic schema with category data.
             
         Returns:
             bool: True if category was added, False if it already existed.
         """
-        _validate_lookup_value(name)
-        
-        category = self.session.query(Category).filter(Category.name == name).first()
+        category = self.session.query(Category).filter(Category.name == category_data.name).first()
+
         if category:
             logger.info("Category already exists, cannot add.")
             return False
-        new_category = Category(name=name)
+        
+        new_category = Category(name=category_data.name)
         self.session.add(new_category)
+
         return True
 
-    def get_category(self, value: str | int) -> Category:
+    def get_category(self, value: str | int) -> schemas.CategoryResponse:
         """
         Get a category from the database by name.
         
@@ -328,7 +330,7 @@ class DatabaseService:
             value (str | int): The name or ID of the category.
 
         Returns:
-            Category: The category object if found.
+            schemas.CategoryResponse: The Pdyantic category object if found.
             
         Raises:
             ResourceNotFoundError: If the category does not exist.
@@ -337,10 +339,10 @@ class DatabaseService:
         logger.debug("Attempting to retrieve category:")
 
         column = Category.id if isinstance(value, int) else Category.name
-        category = self.session.query(Category).filter(column == value).first()
+        category_orm = self.session.query(Category).filter(column == value).first()
         
-        if category:
-            return category
+        if category_orm:
+            return schemas.CategoryResponse.model_validate(category_orm)
             
         raise ResourceNotFoundError(f"Category '{value}' not found.")
 
@@ -410,6 +412,7 @@ class DatabaseService:
                 master_page_number: Optional[int] = None,
                 file_type: Optional[str] = None,
                 status: str = "PEND",
+                mp4s: Optional[List[str]] = []
                     ) -> bool:
         """
         Add a new PDF to the database, associated with a master PDF.
@@ -430,7 +433,6 @@ class DatabaseService:
         def _validate_status(status):
             if status not in {"PEND", "FAIL", "SUCC"}:
                 raise ValidationError("Status must be PEND, FAIL or SUCC")
-
         
         master_pdf = self.get_masterpdf(master_pdf_value)
         if not master_pdf:
