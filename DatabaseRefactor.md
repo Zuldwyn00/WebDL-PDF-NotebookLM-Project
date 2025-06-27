@@ -82,7 +82,7 @@ This document outlines the necessary steps to refactor `pdf_scraper.py` from usi
 -   [ ] **Create `tests/test_database.py`:**
     -   Write unit tests for all functions in `database.py`.
     -   Use an in-memory SQLite database for testing to ensure tests are fast and isolated.
--   [ ] **Update `tests/test_scraper.py`:**
+-   [*] **Update `tests/test_scraper.py`:**
     -   Mock the database session and return values to test the logic in `pdf_scraper.py` without needing a live database.
 
 ---

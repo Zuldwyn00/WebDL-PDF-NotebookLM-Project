@@ -43,7 +43,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
 from datetime import datetime
-from urllib.parse import urlparse, urlunparse
 from pathlib import Path
 from tqdm import tqdm
 from functools import wraps
@@ -826,10 +825,11 @@ def delete_pdf(pdf_key: str, status: str = "PEND", delete_from_database: bool = 
 
     _save_urls(pdf_dict)
 
-
-def add_pdf(pdf_key: str, target_page: int) -> bool:
+#TODO: IMPLEMENT THIS METHOD TO WORK WITH DB
+def add_pdf(pdf_key: str) -> bool:
     """Adds a PDF from database into a master, can specify where with target_page which will shift all pages over to allow room
-    returns True if successful, false if failure"""
+    returns True if successful, false if failure, uses page assignment logic in database to assign proper page this just handles the actual editing of the main PDF
+    file to add the pages of the new PDF"""
     
 
 

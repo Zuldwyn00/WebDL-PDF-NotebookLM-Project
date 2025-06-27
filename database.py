@@ -16,11 +16,18 @@ from sqlalchemy import create_engine, ForeignKey
 from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
 from datetime import datetime
 from typing import Optional, List
-from utils import ResourceNotFoundError, load_config, setup_logger
 from sqlalchemy.orm import Session
 from contextlib import contextmanager
 from sqlalchemy.orm import sessionmaker
 from functools import wraps
+from urllib.parse import urlparse, urlunparse
+
+#Local Imports
+from utils import (ValidationError, load_config, 
+                   setup_logger,
+                   ResourceNotFoundError,
+                   ValidationError,
+                )
 
 # ─── LOGGER & CONFIG ────────────────────────────────────────────────────────────────
 config = load_config()
@@ -67,10 +74,11 @@ class PDF(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     master_id: Mapped[int] = mapped_column(ForeignKey("master_PDF.id"), nullable=False)
 
-    name: Mapped[str] = mapped_column(nullable=False, unique=True)
+    url: Mapped[str] = mapped_column(nullable=False, unique=True)
     file_path: Mapped[str] = mapped_column(nullable=True)
     master_page_number: Mapped[int] = mapped_column()
     file_type: Mapped[Optional[str]] = mapped_column()
+    status: Mapped[str] = mapped_column()
 
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.now, onupdate=datetime.now)
@@ -166,6 +174,7 @@ def with_session(func):
 
     
 # ─── UTILITY FUNCTIONS ────────────────────────────────────────────────────────────────
+
 def _validate_lookup_value(value) -> None:
     """
     Validate that a lookup value is not empty or undefined.
@@ -179,6 +188,41 @@ def _validate_lookup_value(value) -> None:
     if not value or (isinstance(value, str) and not value.strip()):
         raise ValueError("Value cannot be empty or undefined.")
     
+    def _validate_status(status):
+        if status not in {"PEND", "FAIL", "SUCC"}:
+            raise ValidationError("Status must be PEND, FAIL or SUCC")
+
+def normalize_url(raw_url: str) -> str:
+    """Normalizes a URL by standardizing format and removing unnecessary components.
+
+    Args:
+        raw_url (str): The URL to normalize.
+
+    Returns:
+        str: Normalized URL with:
+            - Scheme in lowercase
+            - Domain in lowercase
+            - Path is preserved as is
+            - No trailing slash
+            - No query parameters or fragments
+    """
+    # components of url, urlparse seperates into 6 fields
+    parts = urlparse(raw_url, scheme="http")
+    scheme = parts.scheme.lower()
+    netloc = parts.netloc.lower()
+    path = (parts.path or "")  # Safely handle None case
+    params = ""
+    query = ""
+    fragment = ""
+    if (
+        path.endswith("/") and len(path) > 1
+    ):  # remove ending (/), prevents duplicates if web developer is inconsistent with adding a (/) at the end of a link or not if it's the same link
+        path = path[:-1]
+
+    # scheme://netloc/path;params?query#fragment
+    normalized = urlunparse((scheme, netloc, path, params, query, fragment))
+    return normalized
+
 # ─── DATABASE OPERATIONS ───────────────────────────────────────────────────────────────
 def process_new_pdf(file_path: str, category_name: str, master_pdf_id: str | int):
     "Orchestrator to handle processing and adding a new pdf to the database and to the masterpdf file itself, the orc"
@@ -360,29 +404,35 @@ class DatabaseService:
         raise ResourceNotFoundError(f"MasterPDF '{value}' not found.")
 
     def add_pdf(self,
-                name: str, 
+                url: str, 
                 master_pdf_value: str | int, 
                 file_path: str, 
                 master_page_number: Optional[int] = None,
                 file_type: Optional[str] = None,
+                status: str = "PEND",
                     ) -> bool:
         """
         Add a new PDF to the database, associated with a master PDF.
         
         Args:
-            name (str): The name of the PDF.
+            url (str): The url of the PDF.
             master_pdf_value (str | int): The name or ID of the master PDF this PDF belongs to.
             file_path (str): The file path of the PDF.
             master_page_number (Optional[int]): The page number in the master PDF.
             file_type (Optional[str]): The type of file (optional).
+            status (str): The completion state of the pdf, may be (PEND, FAIL, SUCC).
             
         Returns:
             bool: True if PDF was added successfully, False if master PDF doesn't exist.
         """
-        _validate_lookup_value(name)
+        url = normalize_url(url)
+        _validate_lookup_value(url)
+        def _validate_status(status):
+            if status not in {"PEND", "FAIL", "SUCC"}:
+                raise ValidationError("Status must be PEND, FAIL or SUCC")
 
-        master_pdf = self.get_masterpdf(master_pdf_value)
         
+        master_pdf = self.get_masterpdf(master_pdf_value)
         if not master_pdf:
             logger.error(f"Master PDF '{master_pdf}' does not exist, cannot add PDF.")
             return False
@@ -390,21 +440,22 @@ class DatabaseService:
         page_number = self._assign_page_number(master_pdf_id=master_pdf_value, target_page=master_page_number)
 
         new_pdf = PDF(
-            name=name,
+            url=url,
             master_id=master_pdf.id,
             file_path=file_path,
             master_page_number=page_number,
-            file_type=file_type
+            file_type=file_type,
+            status=status
         )
         self.session.add(new_pdf)
         return True
 
     def get_pdf(self, value: str | int) -> PDF:
         """
-        Get a PDF from the database by name or ID.
+        Get a PDF from the database by url or ID.
 
         Args:
-            value (str | int): The name or ID of the PDF..
+            value (str | int): The url or ID of the PDF..
 
         Returns:
             PDF: The PDF object if found.
