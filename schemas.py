@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, HttpUrl, FilePath, ConfigDict
+from pydantic import AnyUrl, BaseModel, Field, FilePath, ConfigDict, HttpUrl
 from typing import Optional, Literal
 
 # ─── BASE SCHEMAS ───────────────────────────────────────────────────────────────
@@ -34,11 +34,11 @@ class MasterPDFResponse(MasterPDFBase):
 
 # ─── PDF SCHEMAS ────────────────────────────────────────────────────────────────
 class PDFBase(BaseModel):
-    url: HttpUrl
-    file_path: FilePath
+    url: str = Field(..., min_length=3)
+    file_path: Optional[FilePath] = None
     file_type: Literal["pdf", "mp4"] = Field(default="pdf", description="Mark for if link contains other file types, can contain 'mp4' or 'pdf' all links inherently are of type pdf.")
     status: Literal["PEND", "FAIL", "SUCC"] = "PEND"
-    master_page_number: Optional[int] = Field(default=None, description="The page # which this PDF begins on in the parent masterPDF")
+    master_page_number: Optional[int] = Field(default=None, description="The page # which this PDF begins on in the parent masterPDF, if specified will attempt to insert pdf within master on specified page.")
 
 class PDFCreate(PDFBase):
     master_pdf_value: str | int = Field(..., description="The ID or name of the parent masterPDF.")
@@ -46,5 +46,5 @@ class PDFCreate(PDFBase):
 class PDFResponse(PDFBase):
     id: int
     master_id: int
-    url: str #Override HttpUrl to store as string after normalization
+    url: str
     model_config = ConfigDict(from_attributes=True)

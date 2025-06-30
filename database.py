@@ -12,6 +12,7 @@
 #4) Use a @validate_value decorator to make all commands go through it to validate their values are acceptable instead
 
 
+from doctest import master
 from sqlalchemy import create_engine, ForeignKey
 from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
 from datetime import datetime
@@ -77,7 +78,7 @@ class PDF(Base):
     master_id: Mapped[int] = mapped_column(ForeignKey("master_PDF.id"), nullable=False)
 
     url: Mapped[str] = mapped_column(nullable=False, unique=True)
-    file_path: Mapped[str] = mapped_column(nullable=True)
+    file_path: Mapped[Optional[str]] = mapped_column()
     master_page_number: Mapped[int] = mapped_column()
     file_type: Mapped[Optional[str]] = mapped_column()
     status: Mapped[str] = mapped_column()
@@ -226,29 +227,30 @@ def normalize_url(raw_url: str) -> str:
     return normalized
 
 # ─── DATABASE OPERATIONS ───────────────────────────────────────────────────────────────
-def process_new_pdf(file_path: str, category_name: str, master_pdf_id: str | int):
-    "Orchestrator to handle processing and adding a new pdf to the database and to the masterpdf file itself, the orc"
-    try:
-        get_category(category_name)
-    except ResourceNotFoundError:
-        add_category(category_name)
-        logger.info("Category %s not found, creating new category", category_name)
-
-    try:
-        get_masterpdf(master_pdf_id)
-    except ResourceNotFoundError:
-        # The line below is a placeholder and will cause errors at runtime
-        # add_masterpdf(master_pdf_id) #verify is a name, dont add a category as an ID number
-        pass
-
-
-    # add_pdf(...) #add to DB first
-    # your_masterpdf_adding_logic_here(master_pdf_path)
-    pass
+    
 
 class DatabaseService:
     def __init__(self, session: Session):
         self.session = session
+
+    def add_resource(self, object_data: schemas.CategoryCreate | schemas.MasterPDFCreate | schemas.PDFCreate):
+        """
+        Adds a new Category, MasterPDF, or PDF resource to the database.
+
+        This method acts as a dispatcher, invoking the correct `add_*` method based
+        on the type of the `object_data` provided.
+        """
+        try:
+            if isinstance(object_data, schemas.CategoryCreate):
+                self.add_category(object_data)
+            elif isinstance(object_data, schemas.MasterPDFCreate):
+                self.add_masterpdf(object_data)
+            elif isinstance(object_data, schemas.PDFCreate):
+                self.add_pdf(object_data)
+
+        except Exception as e:
+            logger.error("Problem adding %s to database: %s", type(object_data).__name__, e)
+
 
     def _assign_page_number(self, master_pdf_id: str | int, target_page: Optional[int] = None) -> int:
         """
@@ -273,7 +275,7 @@ class DatabaseService:
         _validate_lookup_value(master_pdf_id)
 
         master_pdf = self.get_masterpdf(master_pdf_id)
-        existing_pdfs = sorted(master_pdf.PDF, key=lambda x: x.master_page_number)
+        existing_pdfs = self.session.query(PDF).filter(PDF.master_id == master_pdf.id).order_by(PDF.master_page_number).all()
         if not existing_pdfs:
             return 0
 
@@ -303,15 +305,21 @@ class DatabaseService:
             return new_target_page
 
     def add_category(self, category_data: schemas.CategoryCreate) -> bool:
-        """
-        Add a new category to the database if it doesn't already exist.
+        """Adds a new category to the database if it does not already exist.
+
         Args:
-            category_data (schemas.CategoryCreate): Pydantic schema with category data.
-            
+            category_data (schemas.CategoryCreate): A Pydantic model containing the data 
+                for the new category.
+                - name (str): The name of the category.
+
         Returns:
-            bool: True if category was added, False if it already existed.
+            bool: True if the category was successfully added, False if it already exists.
         """
-        category = self.session.query(Category).filter(Category.name == category_data.name).first()
+        category = (
+            self.session.query(Category)
+            .filter(Category.name == category_data.name)
+            .first()
+        )
 
         if category:
             logger.info("Category already exists, cannot add.")
@@ -323,17 +331,16 @@ class DatabaseService:
         return True
 
     def get_category(self, value: str | int) -> schemas.CategoryResponse:
-        """
-        Get a category from the database by name.
-        
+        """Retrieves a single category from the database by its ID or name.
+
         Args:
-            value (str | int): The name or ID of the category.
+            value (str | int): The ID (integer) or name (string) of the category to retrieve.
+
+        Raises:
+            ResourceNotFoundError: If no category is found with the specified ID or name.
 
         Returns:
-            schemas.CategoryResponse: The Pdyantic category object if found.
-            
-        Raises:
-            ResourceNotFoundError: If the category does not exist.
+            schemas.CategoryResponse: A Pydantic model representing the retrieved category.
         """
         _validate_lookup_value(value)
         logger.debug("Attempting to retrieve category:")
@@ -346,133 +353,134 @@ class DatabaseService:
             
         raise ResourceNotFoundError(f"Category '{value}' not found.")
 
-    def add_masterpdf(self, name:str, category_value:str | int, file_path:str) -> bool:
-        """
-        Adds a new master PDF to the database.
+    def add_masterpdf(self, masterpdf_data: schemas.MasterPDFCreate) -> bool:
+        """Adds a new master PDF to the database.
+
+        Ensures the associated category exists and that the master PDF name is unique.
 
         Args:
-            name (str): The name of the master PDF.
-            category_name (str): The name of the category it belongs to.
-            file_path (str): The file path for the master PDF.
+            masterpdf_data (schemas.MasterPDFCreate): A Pydantic model with the master PDF data.
+                - name (str): The name of the master PDF.
+                - category_value (str | int): The name or ID of the category it belongs to.
+                - file_path (str): The file path for the master PDF.
 
         Returns:
-            bool: True if the master PDF was added, False otherwise.
+            bool: True if the master PDF was added, False if it already exists.
+
+        Raises:
+            ResourceNotFoundError: If the specified category does not exist.
         """
-        _validate_lookup_value(name)
-
-        #find the category to add to
         try:
-            category = self.get_category(category_value)
+            category = self.get_category(masterpdf_data.category_value)
         except ResourceNotFoundError: 
-            logger.error(f"Category '{category_value}' not found, cannot add.")
+            logger.error(f"Category '{masterpdf_data.category_value}' not found, cannot add.")
             return False
 
-        if self.session.query(MasterPDF).filter(MasterPDF.name == name).first():
-            logger.info(f"Master PDF '{name}' already exists, cannot add.")
-            return False
 
+        try:
+            existing_master = self.get_masterpdf(masterpdf_data.name)
+            if existing_master:
+                logger.info(f"Master PDF '{masterpdf_data.name}' already exists, cannot add.")
+                return False
+        except ResourceNotFoundError:
+            #this is expected behavior, so pass and proceed
+            pass
+        
         new_master_pdf = MasterPDF(
-            name=name,
+            name=masterpdf_data.name,
+            file_path=str(masterpdf_data.file_path), #convert filepath into a string
             category_id=category.id,
-            file_path=file_path
         )
         self.session.add(new_master_pdf)
 
         return True
 
-    def get_masterpdf(self, value: str | int) -> MasterPDF:
-        """
-        Get a master PDF from the database by name or ID.
+    def get_masterpdf(self, value: str | int) -> schemas.MasterPDFResponse:
+        """Retrieries a single master PDF from the database by its ID or name.
 
         Args:
-            value (str | int): The name or ID of the master PDF.
-
-        Returns:
-            MasterPDF: The master PDF object if found.
+            value (str | int): The ID (integer) or name (string) of the master PDF to retrieve.
 
         Raises:
-            ValueError: If the value is empty or undefined.
-            ResourceNotFoundError: If the master PDF does not exist.
+            ResourceNotFoundError: If no master PDF is found with the specified ID or name.
+
+        Returns:
+            schemas.MasterPDFResponse: A Pydantic model representing the retrieved master PDF.
         """
         _validate_lookup_value(value)
         
         logger.debug("Attempting to retrieve MasterPDF:")
 
         column = MasterPDF.id if isinstance(value, int) else MasterPDF.name
-        master_pdf = self.session.query(MasterPDF).filter(column == value).first()
+        masterpdf_orm = self.session.query(MasterPDF).filter(column == value).first()
 
-        if master_pdf:
-            return master_pdf
+        if masterpdf_orm:
+            return schemas.MasterPDFResponse.model_validate(masterpdf_orm)
+        
         raise ResourceNotFoundError(f"MasterPDF '{value}' not found.")
 
-    def add_pdf(self,
-                url: str, 
-                master_pdf_value: str | int, 
-                file_path: str, 
-                master_page_number: Optional[int] = None,
-                file_type: Optional[str] = None,
-                status: str = "PEND",
-                mp4s: Optional[List[str]] = []
-                    ) -> bool:
-        """
-        Add a new PDF to the database, associated with a master PDF.
-        
+    def add_pdf(self, pdf_data: schemas.PDFCreate) -> bool:
+        """Adds a new PDF to the database, associated with a master PDF.
+
+        This method validates the master PDF, assigns a page number, normalizes the
+        PDF's URL, and creates a new PDF record in the database. If the specified
+        master PDF does not exist, the operation will fail.
+
         Args:
-            url (str): The url of the PDF.
-            master_pdf_value (str | int): The name or ID of the master PDF this PDF belongs to.
-            file_path (str): The file path of the PDF.
-            master_page_number (Optional[int]): The page number in the master PDF.
-            file_type (Optional[str]): The type of file (optional).
-            status (str): The completion state of the pdf, may be (PEND, FAIL, SUCC).
-            
+            pdf_data (schemas.PDFCreate): A Pydantic model containing the PDF data:
+                - master_pdf_value (str | int): Name or ID of the parent master PDF.
+                - url (HttpUrl): The source URL of the PDF.
+                - file_path (FilePath): The local file path where the PDF is stored.
+                - status (Literal["PEND", "FAIL", "SUCC"]): The processing status.
+                - master_page_number (Optional[int]): The desired starting page number
+                  within the master PDF. If None, it's appended to the end.
+                - file_type (Literal["pdf", "mp4"]): The type of the file.
+
         Returns:
-            bool: True if PDF was added successfully, False if master PDF doesn't exist.
+            bool: True if the PDF was added successfully, False if the master PDF
+                  was not found.
         """
-        url = normalize_url(url)
-        _validate_lookup_value(url)
-        def _validate_status(status):
-            if status not in {"PEND", "FAIL", "SUCC"}:
-                raise ValidationError("Status must be PEND, FAIL or SUCC")
         
-        master_pdf = self.get_masterpdf(master_pdf_value)
+        master_pdf = self.get_masterpdf(pdf_data.master_pdf_value)
         if not master_pdf:
-            logger.error(f"Master PDF '{master_pdf}' does not exist, cannot add PDF.")
+            logger.error(f"Master PDF '{pdf_data.master_pdf_value}' does not exist, cannot add PDF.")
             return False
             
-        page_number = self._assign_page_number(master_pdf_id=master_pdf_value, target_page=master_page_number)
+        page_number = self._assign_page_number(master_pdf_id=master_pdf.id, target_page=pdf_data.master_page_number)
 
         new_pdf = PDF(
-            url=url,
+            url=normalize_url(str(pdf_data.url)),
             master_id=master_pdf.id,
-            file_path=file_path,
+            file_path=str(pdf_data.file_path) if pdf_data.file_path is not None else None,
             master_page_number=page_number,
-            file_type=file_type,
-            status=status
+            file_type=pdf_data.file_type,
+            status=pdf_data.status
         )
         self.session.add(new_pdf)
         return True
 
-    def get_pdf(self, value: str | int) -> PDF:
-        """
-        Get a PDF from the database by url or ID.
+    def get_pdf(self, value: str | int) -> schemas.PDFResponse:
+        """Retrieves a single PDF from the database by its ID or name.
 
         Args:
-            value (str | int): The url or ID of the PDF..
-
-        Returns:
-            PDF: The PDF object if found.
+            value (str | int): The ID (integer) or name (string) of the PDF to retrieve.
 
         Raises:
-            ValueError: If the value is empty or undefined.
-            ResourceNotFoundError: If the PDF does not exist.
+            ResourceNotFoundError: If no PDF is found with the specified ID or name.
+
+        Returns:
+            schemas.PDFResponse: A Pydantic model representing the retrieved PDF.
         """
         _validate_lookup_value(value)
-
         logger.debug("Attempting to retrieve PDF:")
+        
+        column = PDF.id if isinstance(value, int) else PDF.url
+        if isinstance(value, str):
+            value = normalize_url(value)
+            
+        pdf_orm = self.session.query(PDF).filter(column == value).first()
 
-        column = PDF.id if isinstance(value, int) else PDF.name
-        pdf = self.session.query(PDF).filter(column == value).first()
-
-        if pdf:
-            return pdf
+        if pdf_orm:
+            return schemas.PDFResponse.model_validate(pdf_orm)
+        
         raise ResourceNotFoundError(f"PDF '{value}' not found.")
