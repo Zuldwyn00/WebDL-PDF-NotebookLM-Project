@@ -8,32 +8,42 @@ from typing import Optional, Literal
 
 # ─── CATEGORY SCHEMAS ───────────────────────────────────────────────────────────
 class CategoryBase(BaseModel):
+    """Base schema for a category, defining the core fields."""
     name: str = Field(..., min_length=3)
     model_config = ConfigDict(str_strip_whitespace=True)
 
 class CategoryCreate(CategoryBase):
+    """Schema for creating a new category."""
     pass
 
 class CategoryResponse(CategoryBase):
+    """Schema for representing a category in API responses."""
     id: int
     model_config = ConfigDict(from_attributes=True)
 
 # ─── MASTER PDF SCHEMAS ─────────────────────────────────────────────────────────
 class MasterPDFBase(BaseModel):
+    """Base schema for a master PDF document."""
     name: str = Field(..., min_length=3)
     file_path: FilePath
     model_config = ConfigDict(str_strip_whitespace=True)
 
 class MasterPDFCreate(MasterPDFBase):
+    """Schema for creating a new master PDF.
+
+    Accepts either the name or the ID of the parent category.
+    """
     category_value: str | int = Field(..., description="The ID or name of the parent category.")
 
 class MasterPDFResponse(MasterPDFBase):
+    """Schema for representing a master PDF document in API responses."""
     id: int
     category_id: int
     model_config = ConfigDict(from_attributes=True)
 
 # ─── PDF SCHEMAS ────────────────────────────────────────────────────────────────
 class PDFBase(BaseModel):
+    """Base schema for an individual PDF link."""
     url: str = Field(..., min_length=3)
     file_path: Optional[FilePath] = None
     file_type: Literal["pdf", "mp4"] = Field(default="pdf", description="Mark for if link contains other file types, can contain 'mp4' or 'pdf' all links inherently are of type pdf.")
@@ -41,9 +51,14 @@ class PDFBase(BaseModel):
     master_page_number: Optional[int] = Field(default=None, description="The page # which this PDF begins on in the parent masterPDF, if specified will attempt to insert pdf within master on specified page.")
 
 class PDFCreate(PDFBase):
+    """Schema for creating a new PDF link.
+
+    Associates the PDF with a parent MasterPDF by its name or ID.
+    """
     master_pdf_value: str | int = Field(..., description="The ID or name of the parent masterPDF.")
 
 class PDFResponse(PDFBase):
+    """Schema for representing an individual PDF link in API responses."""
     id: int
     master_id: int
     url: str

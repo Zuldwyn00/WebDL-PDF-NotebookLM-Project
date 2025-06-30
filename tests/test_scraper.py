@@ -531,6 +531,11 @@ class TestDB:
                                     master_pdf_value=given_masterpdf_data.name
                                     )
         
-        db_service.add_db(given_category_data)
+        db_service.add_resource(given_category_data)
         assert db_service.get_category(given_category_data.name)
-        db_service.add_db
+
+        db_service.add_resource(given_masterpdf_data)
+        assert db_service.get_masterpdf(given_masterpdf_data.name)
+
+        db_service.add_resource(given_pdf_data)
+        assert db_service.get_pdf(given_pdf_data.url)

@@ -239,6 +239,23 @@ class DatabaseService:
 
         This method acts as a dispatcher, invoking the correct `add_*` method based
         on the type of the `object_data` provided.
+
+        Args:
+            object_data: A Pydantic schema object for the resource to add.
+                Based on the type of `object_data`, different fields are required:
+
+                - To add a Category (`schemas.CategoryCreate`)
+                  - `name` (str): The name of the new category.
+
+                - To add a Master PDF (`schemas.MasterPDFCreate`)
+                  - `name` (str): The name for the new master PDF.
+                  - `file_path` (str): The local file path for the master PDF.
+                  - `category_value` (str | int): The ID or name of the parent category.
+
+                - To add a PDF (`schemas.PDFCreate`)
+                  - `url` (str): The URL of the individual PDF.
+                  - `master_pdf_value` (str | int): The ID or name of the parent master PDF.
+                  - Optional fields include `file_path`, `file_type`, `status`, and `master_page_number`.
         """
         try:
             if isinstance(object_data, schemas.CategoryCreate):
