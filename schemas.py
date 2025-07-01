@@ -60,7 +60,6 @@ class PDFBase(BaseModel):
     """Base schema for an individual PDF link."""
     url: str = Field(..., min_length=3)
     file_path: Optional[FilePath] = None
-    file_type: Literal["pdf", "mp4"] = Field(default="pdf", description="Mark for if link contains other file types, can contain 'mp4' or 'pdf' all links inherently are of type pdf.")
     status: Literal["PEND", "FAIL", "SUCC"] = "PEND"
     master_page_number: Optional[int] = Field(default=None, description="The page # which this PDF begins on in the parent masterPDF, if specified will attempt to insert pdf within master on specified page.")
     video_links: Optional[List[str]] = Field(default_factory=list, description="A list of video URLs associated with the PDF.")
@@ -84,7 +83,6 @@ class PDFUpdate(BaseModel):
     id: int
     url: Optional[str] = Field(None, min_length=3)
     file_path: Optional[FilePath] = None
-    file_type: Optional[Literal["pdf", "mp4"]] = None
     status: Optional[Literal["PEND", "FAIL", "SUCC"]] = None
     master_page_number: Optional[int] = None
     video_links: Optional[List[str]] = None
@@ -95,7 +93,6 @@ class UnprocessedPDFBase(BaseModel):
     """Base schema for an unprocessed PDF (only has category, no master PDF yet)."""
     url: str = Field(..., min_length=3)
     file_path: Optional[str] = None
-    file_type: Literal["pdf", "mp4"] = Field(default="pdf")
     video_links: Optional[List[str]] = Field(default_factory=list)
 
 class UnprocessedPDFCreate(UnprocessedPDFBase):
@@ -113,6 +110,5 @@ class UnprocessedPDFUpdate(BaseModel):
     id: int
     url: Optional[str] = Field(None, min_length=3)
     file_path: Optional[str] = None
-    file_type: Optional[Literal["pdf", "mp4"]] = None
     video_links: Optional[List[str]] = None
     category_value: Optional[str | int] = Field(None, description="The ID or name of the parent category.")

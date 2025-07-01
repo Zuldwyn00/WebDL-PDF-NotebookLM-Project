@@ -767,10 +767,9 @@ class Scraper:
                         .strip()
                     )
                     logger.info("Processing category: %s", category_name)
-
-                    if not category_name:
-                        logger.warning("Category name is empty after processing.")
-
+                    new_category = schemas.CategoryCreate(name=category_name)
+                    self.db.add_resource(new_category)
+                        
                     # get the subcategory first that contains the links we want
                     article_elements = self.driver.find_elements(
                         By.CSS_SELECTOR, "ul.article-links a"
@@ -866,7 +865,8 @@ class Scraper:
         processed_pdf_data = {'id': unprocessed_pdf_data.id,
                               'url': unprocessed_pdf_data.url,
                               'file_path': final_file_name,
-                              'category_value': unprocessed_pdf_data.category_id
+                              'category_value': unprocessed_pdf_data.category_id,
+                              'file_type': "pdf"
                               }
         if video_urls: 
             processed_pdf_data['file_type'] = "mp4"
@@ -879,13 +879,22 @@ class Scraper:
     def combine_into_masterpdf(self, pdf: schemas.UnprocessedPDFResponse):
         pass
 
-    #probably not needed, if it is put it in database.py
-    def update_status(status: str):
-        pass
-
-
-
-
+    def run(self):
+        """
+        Main execution method for the scraper.
+        This method will orchestrate the scraping process, including:
+        1. Discovering new article links.
+        2. Downloading new content as PDFs.
+        3. Further processing steps (TBD).
+        """
+        try:
+            logger.info("Scraper run started.")
+            self.get_links(WEBSITE_LINK)
+        except Exception as e:
+            logger.exception("An error occurred during the scraper run: %s", e)
+        finally:
+            self.close_driver()
+            logger.info("Scraper run finished and resources cleaned up.")
 
 
 def _normalize_url(raw_url: str) -> str:
@@ -1045,7 +1054,17 @@ def main():
 
     Runs the main scraping process and handles any top-level exceptions.
     """
-    run_script()
+    try:
+        init_db()
+        with get_session() as session:
+            db_service = DatabaseService(session=session)
+            scraper = Scraper(db_service=db_service, config=config)
+            scraper.run()
+    except ScraperError as e:
+        logger.error("A critical error occurred: %s", e)
+    except Exception as e:
+        logger.error("An unexpected error occurred in main: %s", e)
+    
 
 if __name__ == "__main__":
     main()

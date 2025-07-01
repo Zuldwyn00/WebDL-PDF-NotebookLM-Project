@@ -35,9 +35,7 @@ config = load_config()
 logger = setup_logger(__name__, config, level="DEBUG")
 
 # ─── DATABASE CONFIGURATION ────────────────────────────────────────────────────────────────
-# Create engine and session factory at module level
-engine = None
-SessionFactory = None
+
 
 class Base(DeclarativeBase):
     pass
@@ -77,8 +75,7 @@ class PDF(Base):
 
     url: Mapped[str] = mapped_column(nullable=False, unique=True)
     file_path: Mapped[Optional[str]] = mapped_column()
-    master_page_number: Optional[Mapped[int]] = mapped_column()
-    file_type: Mapped[str] = mapped_column()
+    master_page_number: Mapped[Optional[int]] = mapped_column()
     status: Mapped[str] = mapped_column()
     video_links: Mapped[Optional[List[str]]] = mapped_column(JSON)
 
@@ -95,7 +92,6 @@ class UnprocessedPDF(Base):
     
     url: Mapped[str] = mapped_column(nullable=False, unique=True)
     file_path: Mapped[Optional[str]] = mapped_column()
-    file_type: Mapped[str] = mapped_column()
     video_links: Mapped[Optional[List[str]]] = mapped_column(JSON)
 
 
@@ -251,7 +247,7 @@ class DatabaseService:
     def add_resource(self, object_data: schemas.CategoryCreate | schemas.MasterPDFCreate | schemas.PDFCreate | schemas.UnprocessedPDFCreate):
         """Adds a new Category, MasterPDF, PDF, or UnprocessedPDF resource to the database."""
         try:
-            if isinstance(object_data, schemas.CategoryCreate)
+            if isinstance(object_data, schemas.CategoryCreate):
                 self.add_category(object_data)
             elif isinstance(object_data, schemas.MasterPDFCreate):
                 self.add_masterpdf(object_data)
@@ -446,8 +442,8 @@ class DatabaseService:
         
         if category_orm:
             return schemas.CategoryResponse.model_validate(category_orm)
-            
-        raise ResourceNotFoundError(f"Category '{value}' not found.")
+        else:
+            raise ResourceNotFoundError(f"Category '{value}' not found.")
 
     def add_masterpdf(self, masterpdf_data: schemas.MasterPDFCreate) -> bool:
         """Adds a new master PDF to the database.
@@ -512,8 +508,8 @@ class DatabaseService:
 
         if masterpdf_orm:
             return schemas.MasterPDFResponse.model_validate(masterpdf_orm)
-        
-        raise ResourceNotFoundError(f"MasterPDF '{value}' not found.")
+        else:
+            raise ResourceNotFoundError(f"MasterPDF '{value}' not found.")
 
     def add_pdf(self, pdf_data: schemas.PDFCreate) -> bool:
         """Adds a new PDF to the database, associated with a master PDF.
@@ -579,8 +575,8 @@ class DatabaseService:
 
         if pdf_orm:
             return schemas.PDFResponse.model_validate(pdf_orm)
-        
-        raise ResourceNotFoundError(f"PDF '{value}' not found.")
+        else:
+            raise ResourceNotFoundError(f"PDF '{value}' not found.")
 
     def add_unprocessed_pdf(self, data: schemas.UnprocessedPDFCreate) -> bool:
         """Adds a new unprocessed PDF to temporary storage."""
