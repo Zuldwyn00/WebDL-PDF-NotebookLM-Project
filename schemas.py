@@ -1,5 +1,5 @@
 from pydantic import AnyUrl, BaseModel, Field, FilePath, ConfigDict, HttpUrl
-from typing import Optional, Literal
+from typing import Optional, Literal, List
 
 # ─── BASE SCHEMAS ───────────────────────────────────────────────────────────────
 # These are the core blueprints for our data. They are used for creation,
@@ -21,6 +21,12 @@ class CategoryResponse(CategoryBase):
     id: int
     model_config = ConfigDict(from_attributes=True)
 
+class CategoryUpdate(BaseModel):
+    """Schema for updating an existing category."""
+    id: int
+    name: Optional[str] = Field(None, min_length=3)
+    model_config = ConfigDict(str_strip_whitespace=True)
+
 # ─── MASTER PDF SCHEMAS ─────────────────────────────────────────────────────────
 class MasterPDFBase(BaseModel):
     """Base schema for a master PDF document."""
@@ -41,6 +47,14 @@ class MasterPDFResponse(MasterPDFBase):
     category_id: int
     model_config = ConfigDict(from_attributes=True)
 
+class MasterPDFUpdate(BaseModel):
+    """Schema for updating an existing master PDF."""
+    id: int
+    name: Optional[str] = Field(None, min_length=3)
+    file_path: Optional[FilePath] = None
+    category_value: Optional[str | int] = Field(None, description="The ID or name of the parent category.")
+    model_config = ConfigDict(str_strip_whitespace=True)
+
 # ─── PDF SCHEMAS ────────────────────────────────────────────────────────────────
 class PDFBase(BaseModel):
     """Base schema for an individual PDF link."""
@@ -49,13 +63,14 @@ class PDFBase(BaseModel):
     file_type: Literal["pdf", "mp4"] = Field(default="pdf", description="Mark for if link contains other file types, can contain 'mp4' or 'pdf' all links inherently are of type pdf.")
     status: Literal["PEND", "FAIL", "SUCC"] = "PEND"
     master_page_number: Optional[int] = Field(default=None, description="The page # which this PDF begins on in the parent masterPDF, if specified will attempt to insert pdf within master on specified page.")
+    video_links: Optional[List[str]] = Field(default_factory=list, description="A list of video URLs associated with the PDF.")
 
 class PDFCreate(PDFBase):
     """Schema for creating a new PDF link.
 
     Associates the PDF with a parent MasterPDF by its name or ID.
     """
-    master_pdf_value: str | int = Field(..., description="The ID or name of the parent masterPDF.")
+    master_pdf_value: Optional[str | int] = Field(..., description="The ID or name of the parent masterPDF.")
 
 class PDFResponse(PDFBase):
     """Schema for representing an individual PDF link in API responses."""
@@ -63,3 +78,41 @@ class PDFResponse(PDFBase):
     master_id: int
     url: str
     model_config = ConfigDict(from_attributes=True)
+
+class PDFUpdate(BaseModel):
+    """Schema for updating an existing PDF link."""
+    id: int
+    url: Optional[str] = Field(None, min_length=3)
+    file_path: Optional[FilePath] = None
+    file_type: Optional[Literal["pdf", "mp4"]] = None
+    status: Optional[Literal["PEND", "FAIL", "SUCC"]] = None
+    master_page_number: Optional[int] = None
+    video_links: Optional[List[str]] = None
+    master_pdf_value: Optional[str | int] = Field(None, description="The ID or name of the parent masterPDF.")
+
+# ─── UNPROCESSED PDF SCHEMAS ────────────────────────────────────────────────────
+class UnprocessedPDFBase(BaseModel):
+    """Base schema for an unprocessed PDF (only has category, no master PDF yet)."""
+    url: str = Field(..., min_length=3)
+    file_path: Optional[str] = None
+    file_type: Literal["pdf", "mp4"] = Field(default="pdf")
+    video_links: Optional[List[str]] = Field(default_factory=list)
+
+class UnprocessedPDFCreate(UnprocessedPDFBase):
+    """Schema for creating a new unprocessed PDF."""
+    category_value: str | int = Field(..., description="The ID or name of the parent category.")
+
+class UnprocessedPDFResponse(UnprocessedPDFBase):
+    """Schema for representing an unprocessed PDF in API responses."""
+    id: int
+    category_id: int
+    model_config = ConfigDict(from_attributes=True)
+
+class UnprocessedPDFUpdate(BaseModel):
+    """Schema for updating an existing unprocessed PDF."""
+    id: int
+    url: Optional[str] = Field(None, min_length=3)
+    file_path: Optional[str] = None
+    file_type: Optional[Literal["pdf", "mp4"]] = None
+    video_links: Optional[List[str]] = None
+    category_value: Optional[str | int] = Field(None, description="The ID or name of the parent category.")

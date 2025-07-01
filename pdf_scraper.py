@@ -34,6 +34,7 @@ __version__ = "2.0"
 __date__ = "2025-05-23"
 
 # External imports
+from asyncio import wait_for
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -60,7 +61,9 @@ from database import (
     MasterPDF,
     PDF,
     DatabaseService,
+    init_db,
 )
+import schemas
 from utils import (
     PDFProcessingError,
     setup_logger,
@@ -110,165 +113,7 @@ if not URLS_FILE.exists():
     logger.info("Created file: %s", URLS_FILE)
 
 
-# ─── DRIVER FUNCTIONS ────────────────────────────────────────────────────────────────
-def initialize_driver(timeout: int = None) -> webdriver.Chrome:
-    """Initializes and returns a Chrome WebDriver instance with headless configuration.
-
-    Args:
-        timeout (int, optional): Custom timeout value in seconds. If None, uses config value.
-
-    Returns:
-        webdriver.Chrome: Configured Chrome WebDriver instance.
-
-    Raises:
-        WebDriverException: If driver initialization fails.
-    """
-    global GLOBAL_DRIVER
-    if GLOBAL_DRIVER is None:
-        chrome_options = Options()
-
-        prefs = {
-            "download.default_directory": str(DATED_DOWNLOAD_DIR),
-            "download.prompt_for_download": config["browser"]["download_prompt"],
-            "download.directory_upgrade": True,
-        }
-
-        chrome_options.add_experimental_option("prefs", prefs)
-        chrome_options.add_argument("--disable-gpu")
-        if config["browser"]["headless"]:
-            chrome_options.add_argument("--headless")
-        chrome_options.add_argument(f"--user-agent={config['website']['user_agent']}")
-
-        GLOBAL_DRIVER = webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()), options=chrome_options
-        )
-
-        # Use timeout from config if not specified
-        timeout = timeout or config["browser"]["timeout"]
-        GLOBAL_DRIVER.wait = WebDriverWait(GLOBAL_DRIVER, timeout)
-
-    return GLOBAL_DRIVER
-
-
-def close_driver():
-    """Closes and cleans up the WebDriver instance if it exists.
-
-    This function safely closes the global WebDriver instance and sets it to None.
-    Should be called when scraping is complete or if an error occurs.
-    """
-    global GLOBAL_DRIVER
-    if GLOBAL_DRIVER:
-        GLOBAL_DRIVER.quit()
-        GLOBAL_DRIVER = None
-
-
 # ─── WEB SCRAPING FUNCTIONS ─────────────────────────────────────────────────────────
-
-
-def get_links(website_url: str) -> dict:
-    """Scrapes all article links and video links from the website, organized by category.
-
-    Args:
-        website_url (str): The base URL to scrape links from.
-
-    Returns:
-        dict: Dictionary containing categories with their URLs and metadata.
-            Format: {
-                "category": {
-                    "url": {
-                        "status": str,  # "PEND", "FAIL", or "SUCC"
-                        "type": str,    # "pdf" or "mp4"
-                        "master_pdf": str | None,
-                        "page_number": int | None
-                    }
-                }
-            }
-
-    Raises:
-        WebDriverException: If web scraping fails.
-        TimeoutException: If page loading times out.
-    """
-    driver = initialize_driver()
-    logger.info("Beginning get_links from: %s", website_url)
-    driver.get(website_url)
-    wait_for_page_ready(driver)
-
-    saved_links = _load_urls()
-
-    # First, collect all category links from the main page
-    category_links = set()
-    for element in driver.find_elements(By.TAG_NAME, "a"):
-        href = element.get_attribute("href") or ""
-        if "category" in href and "subcategory" not in href:
-            category_links.add(href)
-
-    # Process each category
-    total_categories = len(category_links)
-    with tqdm(
-        total=total_categories,
-        desc="Processing Categories",
-        unit="category",
-        position=0,
-        leave=True,
-    ) as pbar:
-        for category_url in category_links:
-            try:
-                # Open category page
-                driver.get(category_url)
-                wait_for_page_ready(driver)
-
-                # Get category name
-                category_name = (
-                    driver.find_element(By.CSS_SELECTOR, "span.text.ng-binding")
-                    .text.split("-", 1)[0] #website updated to have main categories that share same name like "User Manual - Administration" so we filter that out and combine them
-                    .strip()
-                )
-                logger.info("Processing category: %s", category_name)
-
-                if not category_name:
-                    logger.warning("Category name is empty after processing.")
-
-                # get the subcategory first that contains the links we want
-                article_elements = driver.find_elements(
-                    By.CSS_SELECTOR, "ul.article-links a"
-                )
-                # now process the subcategory to find all the links inside of it.
-                for article_element in article_elements:
-                    try:
-                        href = article_element.get_attribute("href")
-                        if not href:
-                            logger.debug("%s not href, skipping", href)
-                            continue
-
-                        # Add new links using _add_url
-                        if href not in saved_links.get(category_name, {}):
-                            logger.debug("New link found: %s, adding to %s.", href, category_name)
-                            _add_url(saved_links, category_name, href, status="PEND", file_type="pdf")
-                        else: 
-                            logger.debug("Link already exists: %s, skipping.", href)
-
-                    except StaleElementReferenceException:
-                        logger.debug("Stale article element, skipping...")
-                        continue
-                    except Exception as e:
-                        logger.exception(
-                            "Error processing article %s: %s", href, str(e)
-                        )
-                        continue
-
-            except Exception as e:
-                logger.exception(
-                    "Error processing category %s: %s", category_url, str(e)
-                )
-                continue
-            finally:
-                pbar.update(1)
-                pbar.set_postfix({"Processed": f"{pbar.n}/{total_categories}"})
-
-    # Save all links and return
-    _save_urls(saved_links)
-    return saved_links
-
 
 def wait_for_page_ready(driver: webdriver.Chrome):
     """Waits for the page to be fully loaded by checking spinner and image loading.
@@ -840,6 +685,207 @@ def add_pdf(pdf_key: str) -> bool:
     return False
 
 # ─── SAVING ─────────────────────────────────────────────────────────────────────────
+class Scraper:
+    def __init__(self, db_service: DatabaseService, config: dict):
+        self.db = db_service
+        self.config = config
+        self.driver = self._initialize_driver()
+
+    def _initialize_driver(self) -> webdriver.Chrome:
+
+        chrome_options = Options()
+
+        prefs = {
+            "download.default_directory": str(DATED_DOWNLOAD_DIR),
+            "download.prompt_for_download": config["browser"]["download_prompt"],
+            "download.directory_upgrade": True,
+        }
+
+        chrome_options.add_experimental_option("prefs", prefs)
+        chrome_options.add_argument("--disable-gpu")
+        if config["browser"]["headless"]:
+            chrome_options.add_argument("--headless")
+        chrome_options.add_argument(f"--user-agent={config['website']['user_agent']}")
+
+        self.driver = webdriver.Chrome(
+            service=Service(ChromeDriverManager().install()), options=chrome_options
+        )
+
+        # Use timeout from config if not specified
+        timeout = config["browser"]["timeout"]
+        self.driver.wait = WebDriverWait(self.driver, timeout)
+
+        return self.driver
+    
+    def close_driver(self):
+        if self.driver:
+            self.driver.quit()
+
+    def get_links(self, website_url: str) -> bool:
+        """Scrapes all article links and video links from the website, organized by category.
+
+        Args:
+            website_url (str): The base URL to scrape links from.
+
+        Returns:
+            bool(True) if successful, otherwises raises errors
+
+        Raises:
+            WebDriverException: If web scraping fails.
+            TimeoutException: If page loading times out.
+        """
+        logger.info("Beginning get_links from: %s", website_url)
+        self.driver.get(website_url)
+        wait_for_page_ready(self.driver)
+
+        # First, collect all category links from the main page
+        category_links = set()
+        for element in self.driver.find_elements(By.TAG_NAME, "a"):
+            href = element.get_attribute("href") or ""
+            if "category" in href and "subcategory" not in href:
+                category_links.add(href)
+
+        # Process each category
+        total_categories = len(category_links)
+        with tqdm(
+            total=total_categories,
+            desc="Processing Categories",
+            unit="category",
+            position=0,
+            leave=True,
+        ) as pbar:
+            for category_url in category_links:
+                try:
+                    # Open category page
+                    self.driver.get(category_url)
+                    wait_for_page_ready(self.driver)
+
+                    # Get category name
+                    category_name = (
+                        self.driver.find_element(By.CSS_SELECTOR, "span.text.ng-binding")
+                        .text.split("-", 1)[0] #website updated to have main categories that share same name like "User Manual - Administration" so we filter that out and combine them
+                        .strip()
+                    )
+                    logger.info("Processing category: %s", category_name)
+
+                    if not category_name:
+                        logger.warning("Category name is empty after processing.")
+
+                    # get the subcategory first that contains the links we want
+                    article_elements = self.driver.find_elements(
+                        By.CSS_SELECTOR, "ul.article-links a"
+                    )
+                    # now process the subcategory to find all the links inside of it.
+                    for article_element in article_elements:
+                        try:
+                            href = article_element.get_attribute("href")
+                            if not href:
+                                logger.debug("%s not href, skipping", href)
+                                continue
+
+                            # Add new links as unprocessed PDFs
+                            try:
+                                self.db.get_pdf(href)
+                                logger.debug("Link already exists: %s, skipping.", href)
+                            except ResourceNotFoundError:
+                                logger.debug("New link found: %s, with category %s.", href, category_name)
+                                unprocessed = schemas.UnprocessedPDFCreate(url=href, category_value=category_name)
+                                self.db.add_unprocessed_pdf(unprocessed)
+
+                        except StaleElementReferenceException:
+                            logger.debug("Stale article element, skipping...")
+                            continue
+                        except Exception as e:
+                            logger.exception(
+                                "Error processing article %s: %s", href, str(e)
+                            )
+                            continue
+
+                except Exception as e:
+                    logger.exception(
+                        "Error processing category %s: %s", category_url, str(e)
+                    )
+                    continue
+                finally:
+                    pbar.update(1)
+                    pbar.set_postfix({"Processed": f"{pbar.n}/{total_categories}"})
+
+        logger.info("Completed link discovery from %s", website_url)
+        return True
+
+    def download_pdf(self, unprocessed_pdf_data: schemas.UnprocessedPDFResponse) -> schemas.UnprocessedPDFUpdate:
+        def _get_videos(driver: webdriver.Chrome) -> set:
+            """Finds all video source URLs on the current page."""
+            video_elements = driver.find_elements(By.CSS_SELECTOR, "video source")
+            video_urls = {
+                video_source.get_attribute("src")
+                for video_source in video_elements
+                if video_source.get_attribute("src") # make sure src is not empty
+            }
+            return video_urls
+
+
+            
+        self.driver.get(unprocessed_pdf_data.url)
+        wait_for_page_ready(self.driver)
+        video_urls = _get_videos(self.driver)
+        try:
+            pdf = self.driver.execute_cdp_cmd(
+            "Page.printToPDF",
+            {
+                "printBackground": True,
+                "paperWidth": 8.27,
+                "paperHeight": 11.7,
+            },
+            )
+            #make sure PDF file isn't too small to make sure it downloaded properly, small pdfs are probably blank
+            pdf_bytes = base64.b64decode(pdf["data"])
+            if len(pdf_bytes) <= 2 * 1024:
+                raise DownloadError(f"PDF too small for {unprocessed_pdf_data.url}")
+
+            parse = urlparse(unprocessed_pdf_data.url)
+            name = (parse.netloc + parse.path).strip("/").replace("/", "_")
+            final_file_name = name + ".pdf"
+        
+        except TimeoutException as e:
+            logger.error("Timeout downloading %s: %s", unprocessed_pdf_data.url, str(e))
+        except DownloadError as e:
+            logger.error("Download failed for %s: %s", unprocessed_pdf_data.url, str(e))
+
+        try:
+            with open(
+                os.path.join(DATED_DOWNLOAD_DIR, final_file_name), "wb"
+            ) as f:
+                f.write(pdf_bytes)
+            logger.info(
+                "Saved as -> %s filesize: %s", final_file_name, len(pdf_bytes)
+            )
+        except IOError as e:
+            raise DownloadError(f"Failed to save PDF {final_file_name}: {e}")
+
+        processed_pdf_data = {'id': unprocessed_pdf_data.id,
+                              'url': unprocessed_pdf_data.url,
+                              'file_path': final_file_name,
+                              'category_value': unprocessed_pdf_data.category_id
+                              }
+        if video_urls: 
+            processed_pdf_data['file_type'] = "mp4"
+        update_unprocessed_pdf = schemas.UnprocessedPDFUpdate(**processed_pdf_data)
+        self.db.update_resource(update_unprocessed_pdf)
+        
+    def assign_master(self, pdf: schemas.UnprocessedPDFResponse, master_value: str):
+        pass
+
+    def combine_into_masterpdf(self, pdf: schemas.UnprocessedPDFResponse):
+        pass
+
+    #probably not needed, if it is put it in database.py
+    def update_status(status: str):
+        pass
+
+
+
+
 
 
 def _normalize_url(raw_url: str) -> str:
@@ -872,40 +918,6 @@ def _normalize_url(raw_url: str) -> str:
     # scheme://netloc/path;params?query#fragment
     normalized = urlunparse((scheme, netloc, path, params, query, fragment))
     return normalized
-
-
-def _add_url(saved_links: dict, category: str, url: str, status: str = "PEND", file_type: str = "pdf") -> None:
-    """Adds a new URL to the saved_links dictionary under the specified category.
-
-    Args:
-        saved_links (dict): Dictionary of categories containing URLs and their metadata.
-        category (str): The category to add the URL under.
-        url (str): The URL to add.
-        status (str, optional): Status of the URL. Must be "PEND", "FAIL", or "SUCC". Defaults to "PEND".
-        file_type (str, optional): Type of file. Defaults to "pdf".
-
-    Raises:
-        ValidationError: If status is invalid or URL already exists in category.
-    """
-    status = status.upper()
-    if status not in {"PEND", "FAIL", "SUCC"}:
-        raise ValidationError("Status must be PEND, FAIL or SUCC")
-    url = _normalize_url(url)
-
-    if category not in saved_links:
-        saved_links[category] = {}
-
-    if url in saved_links[category]:
-        raise ValidationError(f"URL {url} already exists in category {category}")
-    else:
-        saved_links[category][url] = {
-            "type": file_type,
-            "master_pdf": None,
-            "page_number": None,
-            "status": status,
-            #"video_urls": [] defined in process_transcripts, 
-        }
-
 
 def sort_urls_by_page_number(saved_links: dict) -> dict:
     """Sorts URLs within each category by page_number in ascending order.
@@ -1008,6 +1020,7 @@ def run_script():
         ScraperError: If any part of the scraping process fails.
     """
     try:
+        init_db()
         all_links = get_links(WEBSITE_LINK)  
         # Count URLs with PEND status
         pend_count = 0

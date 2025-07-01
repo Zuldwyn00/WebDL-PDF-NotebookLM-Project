@@ -11,9 +11,7 @@
 
 #4) Use a @validate_value decorator to make all commands go through it to validate their values are acceptable instead
 
-
-from doctest import master
-from sqlalchemy import create_engine, ForeignKey
+from sqlalchemy import create_engine, ForeignKey, JSON
 from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
 from datetime import datetime
 from typing import Optional, List
@@ -79,14 +77,31 @@ class PDF(Base):
 
     url: Mapped[str] = mapped_column(nullable=False, unique=True)
     file_path: Mapped[Optional[str]] = mapped_column()
-    master_page_number: Mapped[int] = mapped_column()
-    file_type: Mapped[Optional[str]] = mapped_column()
+    master_page_number: Optional[Mapped[int]] = mapped_column()
+    file_type: Mapped[str] = mapped_column()
     status: Mapped[str] = mapped_column()
+    video_links: Mapped[Optional[List[str]]] = mapped_column(JSON)
 
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.now, onupdate=datetime.now)
 
     master_pdf: Mapped["MasterPDF"] = relationship(back_populates="PDF")
+
+class UnprocessedPDF(Base):
+    __tablename__ = "unprocessed_pdf"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
+    
+    url: Mapped[str] = mapped_column(nullable=False, unique=True)
+    file_path: Mapped[Optional[str]] = mapped_column()
+    file_type: Mapped[str] = mapped_column()
+    video_links: Mapped[Optional[List[str]]] = mapped_column(JSON)
+
+
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now)
+    category: Mapped["Category"] = relationship("Category")
+    
 
 
 def init_db(db_type: str = "sqlite", db_path: str = "pdf_scraper.db"):
@@ -233,41 +248,105 @@ class DatabaseService:
     def __init__(self, session: Session):
         self.session = session
 
-    def add_resource(self, object_data: schemas.CategoryCreate | schemas.MasterPDFCreate | schemas.PDFCreate):
-        """
-        Adds a new Category, MasterPDF, or PDF resource to the database.
-
-        This method acts as a dispatcher, invoking the correct `add_*` method based
-        on the type of the `object_data` provided.
-
-        Args:
-            object_data: A Pydantic schema object for the resource to add.
-                Based on the type of `object_data`, different fields are required:
-
-                - To add a Category (`schemas.CategoryCreate`)
-                  - `name` (str): The name of the new category.
-
-                - To add a Master PDF (`schemas.MasterPDFCreate`)
-                  - `name` (str): The name for the new master PDF.
-                  - `file_path` (str): The local file path for the master PDF.
-                  - `category_value` (str | int): The ID or name of the parent category.
-
-                - To add a PDF (`schemas.PDFCreate`)
-                  - `url` (str): The URL of the individual PDF.
-                  - `master_pdf_value` (str | int): The ID or name of the parent master PDF.
-                  - Optional fields include `file_path`, `file_type`, `status`, and `master_page_number`.
-        """
+    def add_resource(self, object_data: schemas.CategoryCreate | schemas.MasterPDFCreate | schemas.PDFCreate | schemas.UnprocessedPDFCreate):
+        """Adds a new Category, MasterPDF, PDF, or UnprocessedPDF resource to the database."""
         try:
-            if isinstance(object_data, schemas.CategoryCreate):
+            if isinstance(object_data, schemas.CategoryCreate)
                 self.add_category(object_data)
             elif isinstance(object_data, schemas.MasterPDFCreate):
                 self.add_masterpdf(object_data)
             elif isinstance(object_data, schemas.PDFCreate):
                 self.add_pdf(object_data)
+            elif isinstance(object_data, schemas.UnprocessedPDFCreate):
+                self.add_unprocessed_pdf(object_data)
 
         except Exception as e:
             logger.error("Problem adding %s to database: %s", type(object_data).__name__, e)
 
+    def update_resource(self, object_data: schemas.CategoryUpdate | schemas.MasterPDFUpdate | schemas.PDFUpdate | schemas.UnprocessedPDFUpdate):
+        """Updates an existing Category, MasterPDF, PDF, or UnprocessedPDF resource in the database."""
+        try:
+            if isinstance(object_data, schemas.CategoryUpdate):
+                self.update_category(object_data)
+            elif isinstance(object_data, schemas.MasterPDFUpdate):
+                self.update_masterpdf(object_data)
+            elif isinstance(object_data, schemas.PDFUpdate):
+                self.update_pdf(object_data)
+            elif isinstance(object_data, schemas.UnprocessedPDFUpdate):
+                self.update_unprocessed_pdf(object_data)
+        except Exception as e:
+            logger.error("Problem updating %s in database: %s", type(object_data).__name__, e)
+
+    def update_category(self, category_data: schemas.CategoryUpdate) -> bool:
+        """Updates an existing category."""
+        category_orm = self.session.query(Category).filter(Category.id == category_data.id).first()
+        if not category_orm:
+            raise ResourceNotFoundError(f"Category with id {category_data.id} not found.")
+
+        if category_data.name is not None:
+            category_orm.name = category_data.name
+        
+        return True
+
+    def update_masterpdf(self, masterpdf_data: schemas.MasterPDFUpdate) -> bool:
+        """Updates an existing MasterPDF."""
+        masterpdf_orm = self.session.query(MasterPDF).filter(MasterPDF.id == masterpdf_data.id).first()
+        if not masterpdf_orm:
+            raise ResourceNotFoundError(f"MasterPDF with id {masterpdf_data.id} not found.")
+
+        update_data = masterpdf_data.model_dump(exclude_unset=True)
+        
+        if 'category_value' in update_data:
+            category = self.get_category(update_data['category_value'])
+            masterpdf_orm.category_id = category.id
+        
+        for key, value in update_data.items():
+            if hasattr(masterpdf_orm, key) and key not in ['id', 'category_value']:
+                setattr(masterpdf_orm, key, value)
+        
+        return True
+
+    def update_pdf(self, pdf_data: schemas.PDFUpdate) -> bool:
+        """Updates an existing PDF."""
+        pdf_orm = self.session.query(PDF).filter(PDF.id == pdf_data.id).first()
+        if not pdf_orm:
+            raise ResourceNotFoundError(f"PDF with id {pdf_data.id} not found.")
+
+        update_data = pdf_data.model_dump(exclude_unset=True)
+
+        if 'master_pdf_value' in update_data:
+            master_pdf = self.get_masterpdf(update_data['master_pdf_value'])
+            pdf_orm.master_id = master_pdf.id
+        
+        if 'url' in update_data:
+            update_data['url'] = normalize_url(update_data['url'])
+
+        for key, value in update_data.items():
+            if hasattr(pdf_orm, key) and key not in ['id', 'master_pdf_value']:
+                setattr(pdf_orm, key, value)
+
+        return True
+
+    def update_unprocessed_pdf(self, unprocessed_pdf_data: schemas.UnprocessedPDFUpdate) -> bool:
+        """Updates an existing unprocessed PDF."""
+        unprocessed_pdf_orm = self.session.query(UnprocessedPDF).filter(UnprocessedPDF.id == unprocessed_pdf_data.id).first()
+        if not unprocessed_pdf_orm:
+            raise ResourceNotFoundError(f"UnprocessedPDF with id {unprocessed_pdf_data.id} not found.")
+
+        update_data = unprocessed_pdf_data.model_dump(exclude_unset=True)
+
+        if 'category_value' in update_data:
+            category = self.get_category(update_data['category_value'])
+            unprocessed_pdf_orm.category_id = category.id
+
+        if 'url' in update_data:
+            update_data['url'] = normalize_url(update_data['url'])
+
+        for key, value in update_data.items():
+            if hasattr(unprocessed_pdf_orm, key) and key not in ['id', 'category_value']:
+                setattr(unprocessed_pdf_orm, key, value)
+
+        return True
 
     def _assign_page_number(self, master_pdf_id: str | int, target_page: Optional[int] = None) -> int:
         """
@@ -471,7 +550,8 @@ class DatabaseService:
             file_path=str(pdf_data.file_path) if pdf_data.file_path is not None else None,
             master_page_number=page_number,
             file_type=pdf_data.file_type,
-            status=pdf_data.status
+            status=pdf_data.status,
+            video_links=[str(url) for url in pdf_data.video_links] if pdf_data.video_links else None
         )
         self.session.add(new_pdf)
         return True
@@ -501,3 +581,47 @@ class DatabaseService:
             return schemas.PDFResponse.model_validate(pdf_orm)
         
         raise ResourceNotFoundError(f"PDF '{value}' not found.")
+
+    def add_unprocessed_pdf(self, data: schemas.UnprocessedPDFCreate) -> bool:
+        """Adds a new unprocessed PDF to temporary storage."""
+        category = self.get_category(data.category_value)
+        normalized_url = normalize_url(data.url)
+        
+        existing = self.session.query(UnprocessedPDF).filter(UnprocessedPDF.url == normalized_url).first()
+        if existing:
+            return False
+
+        new_unprocessed = UnprocessedPDF(url=normalized_url, category_id=category.id)
+        self.session.add(new_unprocessed)
+        return True
+        
+    def update_pdf_master(self, pdf_to_update: str | int, master_name: str):
+        """Updates the master_pdf field for a specified PDF.
+
+        Args:
+            pdf_to_update (str | int): The ID (integer) or URL (string) of the PDF to update.
+            master_name (str): The name of the master PDF to associate with this PDF.
+
+        Returns:
+            bool: True if the update was successful.
+
+        Raises:
+            ResourceNotFoundError: If no PDF is found with the specified ID or URL.
+            ResourceNotFoundError: If no master PDF is found with the specified name.
+        """
+        logger.debug("Attempting to update PDF master association:")
+        
+        # Find the PDF to update using existing get_pdf method
+        pdf_response = self.get_pdf(pdf_to_update)
+        
+        # Find the master PDF by name
+        master_pdf = self.session.query(MasterPDF).filter(MasterPDF.name == master_name).first()
+        if not master_pdf:
+            raise ResourceNotFoundError(f"Master PDF '{master_name}' not found.")
+        
+        # Get the actual PDF ORM object to update
+        pdf_orm = self.session.query(PDF).filter(PDF.id == pdf_response.id).first()
+        
+        # Update the master_id
+        pdf_orm.master_id = master_pdf.id
+        return True
