@@ -818,7 +818,6 @@ class Scraper:
             for video_source in video_elements:
                 video_urls.append(video_source.get_attribute("src"))
             return video_urls
-
             
         self.driver.get(unprocessed_pdf_data.url)
         wait_for_page_ready(self.driver)
@@ -881,16 +880,15 @@ class Scraper:
         """
         try:
             logger.info("Scraper run started.")
-            #self.get_links(WEBSITE_LINK)
-            pdf_orm = self.db.session.query(UnprocessedPDF).filter(UnprocessedPDF.file_path == None).first() #make sure to change, this is for testing put a find method in the databse itself
-            self.download_pdf(pdf_orm)
-
+            self.get_links(WEBSITE_LINK)
+            #TODO:
+            #process_all_links() or process_videos()? either way we need a method to process all our unprocessedPDFs, we can view which ones dont have a file_path yet which means they arent downloaded.
         except Exception as e:
             logger.exception("An error occurred during the scraper run: %s", e)
         finally:
             self.close_driver()
             logger.info("Scraper run finished and resources cleaned up.")
-
+    
 
 def _normalize_url(raw_url: str) -> str:
     """Normalizes a URL by standardizing format and removing unnecessary components.
@@ -922,6 +920,8 @@ def _normalize_url(raw_url: str) -> str:
     # scheme://netloc/path;params?query#fragment
     normalized = urlunparse((scheme, netloc, path, params, query, fragment))
     return normalized
+
+
 
 
 def main():
