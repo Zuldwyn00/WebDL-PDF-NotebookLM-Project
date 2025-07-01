@@ -329,14 +329,21 @@ class DatabaseService:
         if not unprocessed_pdf_orm:
             raise ResourceNotFoundError(f"UnprocessedPDF with id {unprocessed_pdf_data.id} not found.")
 
-        update_data = unprocessed_pdf_data.model_dump(exclude_unset=True)
+        # Exclude 'id' and 'category_value' from direct update
+        update_data = unprocessed_pdf_data.model_dump(exclude_unset=True, exclude={'id', 'category_value', 'video_links'})
 
-        if 'category_value' in update_data:
-            category = self.get_category(update_data['category_value'])
-            unprocessed_pdf_orm.category_id = category.id
+        # Handle video_links update explicitly to ensure an empty list is saved correctly.
+        if unprocessed_pdf_data.video_links is not None:
+            unprocessed_pdf_orm.video_links = unprocessed_pdf_data.video_links
 
-        if 'url' in update_data:
-            update_data['url'] = normalize_url(update_data['url'])
+        # Handle category update separately
+        if unprocessed_pdf_data.category_value is not None:
+            try:
+                category = self.get_category(unprocessed_pdf_data.category_value)
+                unprocessed_pdf_orm.category_id = category.id
+            except ResourceNotFoundError:
+                logger.error(f"Category '{unprocessed_pdf_data.category_value}' not found, cannot update.")
+                return False
 
         for key, value in update_data.items():
             if hasattr(unprocessed_pdf_orm, key) and key not in ['id', 'category_value']:
@@ -526,7 +533,6 @@ class DatabaseService:
                 - status (Literal["PEND", "FAIL", "SUCC"]): The processing status.
                 - master_page_number (Optional[int]): The desired starting page number
                   within the master PDF. If None, it's appended to the end.
-                - file_type (Literal["pdf", "mp4"]): The type of the file.
 
         Returns:
             bool: True if the PDF was added successfully, False if the master PDF
@@ -545,7 +551,6 @@ class DatabaseService:
             master_id=master_pdf.id,
             file_path=str(pdf_data.file_path) if pdf_data.file_path is not None else None,
             master_page_number=page_number,
-            file_type=pdf_data.file_type,
             status=pdf_data.status,
             video_links=[str(url) for url in pdf_data.video_links] if pdf_data.video_links else None
         )

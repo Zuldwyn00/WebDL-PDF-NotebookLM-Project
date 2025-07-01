@@ -44,6 +44,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
 from datetime import datetime
+from typing import List
 from pathlib import Path
 from tqdm import tqdm
 from functools import wraps
@@ -60,6 +61,7 @@ from database import (
     Category,
     MasterPDF,
     PDF,
+    UnprocessedPDF,
     DatabaseService,
     init_db,
 )
@@ -783,13 +785,9 @@ class Scraper:
                                 continue
 
                             # Add new links as unprocessed PDFs
-                            try:
-                                self.db.get_pdf(href)
-                                logger.debug("Link already exists: %s, skipping.", href)
-                            except ResourceNotFoundError:
-                                logger.debug("New link found: %s, with category %s.", href, category_name)
-                                unprocessed = schemas.UnprocessedPDFCreate(url=href, category_value=category_name)
-                                self.db.add_unprocessed_pdf(unprocessed)
+                            logger.debug("link found: %s, with category %s.", href, category_name)
+                            unprocessed = schemas.UnprocessedPDFCreate(url=href, category_value=category_name)
+                            self.db.add_unprocessed_pdf(unprocessed)
 
                         except StaleElementReferenceException:
                             logger.debug("Stale article element, skipping...")
@@ -813,16 +811,13 @@ class Scraper:
         return True
 
     def download_pdf(self, unprocessed_pdf_data: schemas.UnprocessedPDFResponse) -> schemas.UnprocessedPDFUpdate:
-        def _get_videos(driver: webdriver.Chrome) -> set:
+        def _get_videos(driver: webdriver.Chrome) -> list:
             """Finds all video source URLs on the current page."""
             video_elements = driver.find_elements(By.CSS_SELECTOR, "video source")
-            video_urls = {
-                video_source.get_attribute("src")
-                for video_source in video_elements
-                if video_source.get_attribute("src") # make sure src is not empty
-            }
+            video_urls = []
+            for video_source in video_elements:
+                video_urls.append(video_source.get_attribute("src"))
             return video_urls
-
 
             
         self.driver.get(unprocessed_pdf_data.url)
@@ -866,11 +861,8 @@ class Scraper:
                               'url': unprocessed_pdf_data.url,
                               'file_path': final_file_name,
                               'category_value': unprocessed_pdf_data.category_id,
-                              'file_type': "pdf"
-                              }
-        if video_urls: 
-            processed_pdf_data['file_type'] = "mp4"
-        update_unprocessed_pdf = schemas.UnprocessedPDFUpdate(**processed_pdf_data)
+                            }
+        update_unprocessed_pdf = schemas.UnprocessedPDFUpdate(**processed_pdf_data, video_links=video_urls)
         self.db.update_resource(update_unprocessed_pdf)
         
     def assign_master(self, pdf: schemas.UnprocessedPDFResponse, master_value: str):
@@ -889,7 +881,10 @@ class Scraper:
         """
         try:
             logger.info("Scraper run started.")
-            self.get_links(WEBSITE_LINK)
+            #self.get_links(WEBSITE_LINK)
+            pdf_orm = self.db.session.query(UnprocessedPDF).filter(UnprocessedPDF.file_path == None).first() #make sure to change, this is for testing put a find method in the databse itself
+            self.download_pdf(pdf_orm)
+
         except Exception as e:
             logger.exception("An error occurred during the scraper run: %s", e)
         finally:
@@ -927,126 +922,6 @@ def _normalize_url(raw_url: str) -> str:
     # scheme://netloc/path;params?query#fragment
     normalized = urlunparse((scheme, netloc, path, params, query, fragment))
     return normalized
-
-def sort_urls_by_page_number(saved_links: dict) -> dict:
-    """Sorts URLs within each category by page_number in ascending order.
-
-    Args:
-        saved_links (dict): The dictionary of links to sort, structured by category.
-
-    Returns:
-        dict: A new dictionary with URLs sorted by page_number within each category.
-    """
-    sorted_links = {}
-    # Sort categories alphabetically
-    for category in sorted(saved_links.keys()):
-        urls = saved_links[category]
-        # Sort urls by page_number. `None` page numbers are placed at the end.
-        sorted_items = sorted(
-            urls.items(), key=lambda item: (item[1].get("page_number") is None, item[1].get("page_number"))
-        )
-        sorted_links[category] = dict(sorted_items)
-    return sorted_links
-
-
-def _save_urls(saved_links: dict) -> None:
-    """Saves the saved_links dictionary to the URLs file in JSON format.
-
-    Args:
-        saved_links (dict): Dictionary of categories containing URLs and their metadata to save.
-            Format: {
-                "category": {
-                    "url": {
-                        "type": str,
-                        "master_pdf": str | None,
-                        "page_number": int | None,
-                        "status": str
-                        "path": str
-                    }
-                }
-            }
-
-    Raises:
-        OSError: If saving to file fails.
-    """
-    try:
-        # Sort the links before saving to maintain a consistent order.
-        sorted_links = sort_urls_by_page_number(saved_links)
-        
-        # Create a JSON-safe copy of the dictionary
-        json_safe_links = {
-            category: {
-                url: {
-                    **data,
-                    "path": str(data.get("path", ""))  # Always convert path to string
-                }
-                for url, data in urls.items()
-            }
-            for category, urls in sorted_links.items()
-        }
-
-        with open(URLS_FILE, "w", encoding="utf8") as f:
-            json.dump(json_safe_links, f, indent=2)
-            
-        logger.debug("Successfully saved %d categories to %s", len(saved_links), URLS_FILE)
-            
-    except OSError as e:
-        logger.error("Failed to save URLs to %s: %s", URLS_FILE, e)
-        raise
-    except Exception as e:
-        logger.error("Unexpected error while saving URLs: %s", e)
-        raise
-
-
-def _load_urls() -> dict:
-    """Loads the saved_links dictionary from the URLs file.
-
-    Returns:
-        dict: Dictionary of URLs and their metadata. Empty dict if file doesn't exist.
-    """
-    if (
-        not URLS_FILE.exists() or URLS_FILE.stat().st_size == 0
-    ):  # if empty, return blank set
-        return {}
-    try:
-        with open(URLS_FILE, "r", encoding="utf8") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-
-
-def run_script():
-    """Main function that orchestrates the PDF scraping process.
-
-    This function:
-    1. Scrapes links from the website
-    2. Downloads PDFs
-    3. Combines and categorizes PDFs
-    4. Processes video transcripts
-    5. Cleans up resources
-
-    Raises:
-        ScraperError: If any part of the scraping process fails.
-    """
-    try:
-        init_db()
-        all_links = get_links(WEBSITE_LINK)  
-        # Count URLs with PEND status
-        pend_count = 0
-        for category, urls in all_links.items():
-            for url, data in urls.items():
-                if data["status"] == "PEND":
-                    pend_count += 1
-        print(f"PENDING URL COUNT: - {pend_count}")
-
-        download_pdfs(all_links)
-        _combine_categorize_pdfs()
-        _process_transcripts()
-    except Exception as e:
-        logger.exception("An error occurred while running the script: %s", str(e))
-        raise ScraperError(f"Script execution failed: {e}")
-    finally:
-        close_driver()
 
 
 def main():
