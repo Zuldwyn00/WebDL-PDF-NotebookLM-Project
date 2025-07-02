@@ -11,7 +11,6 @@
 
 #4) Use a @validate_value decorator to make all commands go through it to validate their values are acceptable instead
 
-from importlib.resources import Resource
 from sqlalchemy import create_engine, ForeignKey, JSON
 from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
 from datetime import datetime
@@ -593,7 +592,6 @@ class DatabaseService:
             #PDF doesn't exist in main table, expected behavior, proceed
             pass
         
-            
         category = self.get_category(pdf_data.category_value)
         normalized_url = normalize_url(pdf_data.url)
         

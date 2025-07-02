@@ -34,7 +34,6 @@ __version__ = "2.0"
 __date__ = "2025-05-23"
 
 # External imports
-from asyncio import wait_for
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -48,9 +47,8 @@ from typing import List
 from pathlib import Path
 from tqdm import tqdm
 from functools import wraps
-from urllib.parse import urlparse, urlunparse
-import os, base64
-import json
+from urllib.parse import urlparse
+import os, base64, io
 import pymupdf, ocrmypdf
 
 
@@ -259,18 +257,16 @@ def apply_ocr(doc: pymupdf.Document) -> pymupdf.Document:
         )
         return doc
 
-    temp_input = Path(DOWNLOAD_DIR) / "temp_ocr.pdf"
-    temp_output = Path(DOWNLOAD_DIR) / "temp_output.pdf"
+    input_stream = io.BytesIO(doc.tobytes())
+    output_stream = io.BytesIO()
 
     try:
-        doc.save(str(temp_input))
-
         ocrmypdf.ocr(
-            input_file=str(temp_input), output_file=str(temp_output), redo_ocr=True
+            input_file=input_stream, output_file=output_stream, redo_ocr=True
         )
         # Load OCRd doc bytes in memory so we can close the temp file
-        with open(str(temp_output), "rb") as f:
-            ocr_bytes = f.read()
+        output_stream.seek(0)
+        ocr_bytes = output_stream.read()
         ocr_doc = pymupdf.open(stream=ocr_bytes, filetype="pdf")
         logger.info("OCR complete, returning new document")
 
@@ -280,11 +276,9 @@ def apply_ocr(doc: pymupdf.Document) -> pymupdf.Document:
         logger.error("Error during OCR: %s", e)
         raise ProcessingError(f"OCR processing failed: {e}")
     finally:
-        # Clean up temp files
-        if temp_input.exists():
-            temp_input.unlink()
-        if temp_output.exists():
-            temp_output.unlink()
+        # Clean up streams
+        input_stream.close()
+        output_stream.close()
 
 
 def delete_pdf(pdf_key: str, status: str = "PEND", delete_from_database: bool = False) -> None:
@@ -586,7 +580,7 @@ class Scraper:
 
         Raises:
             ProcessingError: If PDF combination or categorization fails.
-            ResourceNotFound: If required directories or files are missing.
+            ResourceNotFoundError: If required directories or files are missing.
         """
         try:
             logger.info("Starting PDF combination and categorization")
@@ -799,12 +793,6 @@ class Scraper:
             self.db.session.rollback()
             raise ProcessingError(f"PDF processing failed: {e}")
 
-    def assign_master(self, pdf: schemas.UnprocessedPDFResponse, master_value: str):
-        pass
-
-    def combine_into_masterpdf(self, pdf: schemas.UnprocessedPDFResponse):
-        pass
-
     def process_unprocessed_pdfs(self):
         """Downloads all unprocessed PDFs that haven't been downloaded yet."""
         unprocessed_pdfs = (
@@ -829,6 +817,7 @@ class Scraper:
                 logger.error("Failed to download %s: %s", unprocessed_pdf.url, e)
                 continue
 
+
     def run(self):
         """
         Main execution method for the scraper.
@@ -846,8 +835,7 @@ class Scraper:
             # Step 2: Download unprocessed PDFs
             self.process_unprocessed_pdfs()
             
-            # Step 3: Combine downloaded PDFs into master files
-            self._combine_categorize_pdfs()
+            self.
             
         except Exception as e:
             logger.exception("An error occurred during the scraper run: %s", e)
