@@ -43,7 +43,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
 from datetime import datetime
-from typing import List
 from pathlib import Path
 from tqdm import tqdm
 from functools import wraps
@@ -435,6 +434,7 @@ class Scraper:
 
     def get_links(self, website_url: str) -> bool:
         """Scrapes all article links and video links from the website, organized by category.
+            Creates a new category if existing one for found category is not present.
 
         Args:
             website_url (str): The base URL to scrape links from.
@@ -479,6 +479,7 @@ class Scraper:
                         .strip()
                     )
                     logger.info("Processing category: %s", category_name)
+                    #create new category if category is not present already, add_resource handles check if the category already exists or not so no need to check here.
                     new_category = schemas.CategoryCreate(name=category_name)
                     self.db.add_resource(new_category)
                         
@@ -542,12 +543,23 @@ class Scraper:
             },
             )
             #make sure PDF file isn't too small to make sure it downloaded properly, small pdfs are probably blank
-            
             pdf_bytes = base64.b64decode(pdf["data"])
             if len(pdf_bytes) <= 2 * 1024:
                 raise DownloadError(f"PDF too small for {unprocessed_pdf_data.url}")
             
             pdf_bytes_ocr = apply_ocr(pdf_bytes)
+            # Append video transciption data onto end of pdf.
+            if video_urls:
+                main_doc = pymupdf.open(stream=io.BytesIO(pdf_bytes_ocr), filetype="pdf")
+                for video_url in video_urls:
+                    transcription_doc = transcribe_video(video_url, category=(self.db.get_category(unprocessed_pdf_data.category_id)).name)
+                    if transcription_doc:
+                        main_doc.insert_pdf(transcription_doc)
+                        transcription_doc.close()
+                
+                pdf_bytes_ocr = main_doc.tobytes()
+                main_doc.close()
+
             parse = urlparse(unprocessed_pdf_data.url)
             name = (parse.netloc + parse.path).strip("/").replace("/", "_")
             final_file_name = name + ".pdf"
@@ -843,6 +855,8 @@ class Scraper:
             
             # Step 2: Download unprocessed PDFs
             self.process_unprocessed_pdfs()
+
+            self._combine_categorize_pdfs()
             
             
             

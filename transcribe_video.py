@@ -330,7 +330,7 @@ def transcribe_video(
                 text_font = pymupdf.Font("helv")
 
                 # Add title
-                page.insert_text((50, 50), f"Transcript: {filename}", fontsize=16)
+                page.insert_text((50, 50), f"Transcript for video(s) contained within above document: {filename}", fontsize=16)
 
                 # Add custom information at the start
                 y_pos = 100
@@ -368,7 +368,7 @@ def transcribe_video(
             logger.info("Transcription completed successfully!")
             elapsed_time = time.time() - start_time
             logger.debug("Total processing time: %s", format_timestamp(elapsed_time))
-
+            
             return doc
 
         except Exception as e:
