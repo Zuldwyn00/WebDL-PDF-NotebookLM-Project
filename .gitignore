@@ -44,6 +44,8 @@ urls.json
 chromedriver
 chromedriver.exe
 updated_categories.txt
+pdf_scraper.db
+pdf_scraper.db-journal
 
 # Logs
 *.log
@@ -59,3 +61,4 @@ sensitive_config.yaml
 # Other
 GITHUB_SETUP_GUIDE.md
 RESUME_ENHANCEMENTS.md
+
