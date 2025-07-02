@@ -128,7 +128,7 @@ def init_db(db_type: str = "sqlite", db_path: str = "pdf_scraper.db"):
     if db_type != "sqlite":
         raise ValueError(f"Unsupported database type: {db_type}. Only 'sqlite' is currently supported.")
 
-    engine = create_engine(f"{db_type}:///{db_path}", echo=True)
+    engine = create_engine(f"{db_type}:///{db_path}", echo=False)
     Base.metadata.create_all(engine)
     #add global session as default, get_session() can be used with an optional engine param to make a new session with that engine
     SessionFactory = sessionmaker(bind=engine)
@@ -442,7 +442,7 @@ class DatabaseService:
             schemas.CategoryResponse: A Pydantic model representing the retrieved category.
         """
         _validate_lookup_value(value)
-        logger.debug("Attempting to retrieve category:")
+        logger.debug("Attempting to retrieve category with ID/name: %s.", value)
 
         column = Category.id if isinstance(value, int) else Category.name
         category_orm = self.session.query(Category).filter(column == value).first()

@@ -161,6 +161,9 @@ def setup_logger(
     log_level = level or config["logger"]["level"]
     logger.setLevel(getattr(logging, log_level))
 
+    # Suppress verbose logs from SQLAlchemy
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+
     # Prevent adding duplicate handlers
     if logger.hasHandlers():
         logger.handlers.clear()

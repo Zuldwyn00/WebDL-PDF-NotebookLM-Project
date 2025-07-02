@@ -464,12 +464,12 @@ class Scraper:
         return True
 
     def download_pdf(self, unprocessed_pdf_data: schemas.UnprocessedPDFResponse) -> None:
-        def _get_videos(driver: webdriver.Chrome) -> list:
+        def _get_videos(driver: webdriver.Chrome) -> set:
             """Finds all video source URLs on the current page."""
             video_elements = driver.find_elements(By.CSS_SELECTOR, "video source")
-            video_urls = []
+            video_urls = set()
             for video_source in video_elements:
-                video_urls.append(video_source.get_attribute("src"))
+                video_urls.add(video_source.get_attribute("src"))
             return video_urls
             
         self.driver.get(unprocessed_pdf_data.url)

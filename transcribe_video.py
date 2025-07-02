@@ -92,7 +92,7 @@ def extract_audio(video_path, audio_path):
     Raises:
         IOError: If audio extraction fails.
     """
-    logger.info("Extracting audio from video...")
+    logger.debug("Extracting audio from video...")
     video = VideoFileClip(video_path)
     video.audio.write_audiofile(audio_path, verbose=False, logger=None)
     video.close()
@@ -260,7 +260,7 @@ def save_transcript(transcript, output_file):
 
 
 def transcribe_video(
-    url, chunk_duration_minutes=10, category=None, master=None, master_page=None
+    url, chunk_duration_minutes=5, category=None, master=None, master_page=None
 ):
     """Transcribes a video from a URL and creates a PDF document.
 
