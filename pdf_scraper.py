@@ -226,14 +226,14 @@ def _process_transcripts(self) -> None:
     logger.info("Completed processing all video transcripts")
 
 
-def apply_ocr(doc: pymupdf.Document) -> pymupdf.Document:
-    """OCR a PyMuPDF Document object and return the OCRed version with searchable text.
+def apply_ocr(pdf_bytes: bytes) -> bytes:
+    """OCR a PDF's bytes and return the OCRed version with searchable text.
 
     Args:
-        doc (pymupdf.Document): The document to apply OCR to.
+        pdf_bytes (bytes): The document bytes to apply OCR to.
 
     Returns:
-        pymupdf.Document: OCRed version of the document.
+        bytes: OCRed version of the document as bytes.
 
     Raises:
         ProcessingError: If OCR processing fails.
@@ -241,36 +241,43 @@ def apply_ocr(doc: pymupdf.Document) -> pymupdf.Document:
 
     min_images = config["pdf"]["minimum_ocr_pages"]
 
-    # Check if document has any images on any page
-    image_count = 0
-    for page_num in range(len(doc)):
-        page = doc[page_num]
-        images = page.get_images(full=True)
-        image_count += len(images)
-        if image_count >= min_images:
-            break  # to avoid unnecessary processing break after hitting the minimum
+    # We need to open the document to check for images.
+    doc = None
+    try:
+        doc = pymupdf.open(stream=io.BytesIO(pdf_bytes), filetype="pdf")
+        # Check if document has any images on any page
+        image_count = 0
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            images = page.get_images(full=True)
+            image_count += len(images)
+            if image_count >= min_images:
+                break  # to avoid unnecessary processing break after hitting the minimum
 
-    # Skip OCR if less than 2 images found
-    if image_count < min_images:
-        logger.debug(
-            "Less than %d images found in document (%d found), skipping OCR", min_images, image_count
+        # Skip OCR if less than min_images images found
+        if image_count < min_images:
+            logger.debug(
+                "Less than %d images found in document (%d found), skipping OCR",
+                min_images,
+                image_count,
+            )
+            return pdf_bytes
+    except Exception as e:
+        logger.warning(
+            "Could not check for images in PDF, proceeding with OCR anyway. Error: %s", e
         )
-        return doc
+    finally:
+        if doc:
+            doc.close()
 
-    input_stream = io.BytesIO(doc.tobytes())
+    input_stream = io.BytesIO(pdf_bytes)
     output_stream = io.BytesIO()
 
     try:
-        ocrmypdf.ocr(
-            input_file=input_stream, output_file=output_stream, redo_ocr=True
-        )
-        # Load OCRd doc bytes in memory so we can close the temp file
+        ocrmypdf.ocr(input_file=input_stream, output_file=output_stream, redo_ocr=True)
+        logger.info("OCR complete, returning new document bytes")
         output_stream.seek(0)
-        ocr_bytes = output_stream.read()
-        ocr_doc = pymupdf.open(stream=ocr_bytes, filetype="pdf")
-        logger.info("OCR complete, returning new document")
-
-        return ocr_doc
+        return output_stream.getvalue()
 
     except Exception as e:
         logger.error("Error during OCR: %s", e)
@@ -535,10 +542,12 @@ class Scraper:
             },
             )
             #make sure PDF file isn't too small to make sure it downloaded properly, small pdfs are probably blank
+            
             pdf_bytes = base64.b64decode(pdf["data"])
             if len(pdf_bytes) <= 2 * 1024:
                 raise DownloadError(f"PDF too small for {unprocessed_pdf_data.url}")
-
+            
+            pdf_bytes_ocr = apply_ocr(pdf_bytes)
             parse = urlparse(unprocessed_pdf_data.url)
             name = (parse.netloc + parse.path).strip("/").replace("/", "_")
             final_file_name = name + ".pdf"
@@ -552,9 +561,9 @@ class Scraper:
             with open(
                 os.path.join(DATED_DOWNLOAD_DIR, final_file_name), "wb"
             ) as f:
-                f.write(pdf_bytes)
+                f.write(pdf_bytes_ocr)
             logger.info(
-                "Saved as -> %s filesize: %s", final_file_name, len(pdf_bytes)
+                "Saved as -> %s filesize: %s", final_file_name, len(pdf_bytes_ocr)
             )
         except IOError as e:
             raise DownloadError(f"Failed to save PDF {final_file_name}: {e}")
@@ -835,7 +844,7 @@ class Scraper:
             # Step 2: Download unprocessed PDFs
             self.process_unprocessed_pdfs()
             
-            self.
+            
             
         except Exception as e:
             logger.exception("An error occurred during the scraper run: %s", e)
