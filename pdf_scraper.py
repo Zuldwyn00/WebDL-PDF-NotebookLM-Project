@@ -150,7 +150,7 @@ def wait_for_page_ready(driver: webdriver.Chrome):
 
 
 # ─── PDF MANIPULATION ───────────────────────────────────────────────────────────────
-def with_pdf(pdf_key_arg: str | int = "master_pdf_id"):
+def with_pdf(pdf_key_arg: str | int):
 
     def decorator(func):
         @wraps(func)
@@ -163,67 +163,9 @@ def with_pdf(pdf_key_arg: str | int = "master_pdf_id"):
             
             doc = None
             try:
-                master_pdf_obj = get_db_masterpdf(pdf_key)
+               pdf_doc = None
             except:
                 pass
-
-
-
-def _process_transcripts(self) -> None:
-    """Processes video transcripts and combines them into master transcript PDFs.
-
-    This function:
-    1. Identifies videos in the URL database
-    2. Transcribes each video
-    3. Creates PDF documents from transcripts
-    4. Combines transcripts into master PDFs
-    5. Updates URL data with transcript information
-
-    Raises:
-        ProcessingError: If transcription or PDF creation fails.
-    """
-    # separate method so we can retain link to master_pdf, page_number
-    pdf_dict = _load_urls()
-    
-    for category, urls in pdf_dict.items():
-        logger.info("Processing transcripts for category: %s", category)
-        for url, data in urls.items():
-            if data.get("type") == "mp4" and data.get("video_urls") and not data["status"] == "SUCC":
-                video_urls = data["video_urls"]
-                logger.debug(
-                    "Processing %d video transcripts for page: %s", len(video_urls), url
-                )
-                try:
-                    for video_url in video_urls:
-                        logger.debug("Processing video transcript for: %s", video_url)
-                        try:
-                            transcript_doc = transcribe_video(
-                                video_url,
-                                category=category,
-                                master=data["master_pdf"],
-                                master_page=data["page_number"],
-                            )
-                            combine_transcript(transcript_doc)
-                        except Exception as e:
-                            logger.error("Failed to process video %s: %s", video_url, e)
-                            data["status"] = "FAIL"
-                            raise ProcessingError(f"Video processing failed: {e}")
-                    
-                    # Only update status to SUCC if all videos were processed successfully
-                    data["status"] = "SUCC"
-                    logger.info("Successfully processed all videos for %s", url)
-
-                except Exception as e:
-                    delete_pdf(url, status="FAIL")
-                    data["status"] = "FAIL"
-                    #dont process other videos in url, fail entire thing and set status as FAIL and delete from master
-                    logger.error("Failed to process videos for %s: %s", url, e)
-                    raise ProcessingError(f"Transcription processing failed: {e}")
-                finally:
-                    #ensure we save all statuses incase of failure
-                    _save_urls(pdf_dict)
-    logger.info("Completed processing all video transcripts")
-
 
 def apply_ocr(pdf_bytes: bytes) -> bytes:
     """OCR a PDF's bytes and return the OCRed version with searchable text.
