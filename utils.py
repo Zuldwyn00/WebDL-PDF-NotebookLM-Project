@@ -42,7 +42,7 @@ class ValidationError(ScraperError):
 
     pass
 
-class ResourceNotFoundError(ScraperError):
+class ResourceNotFound(ScraperError):
     """Raised when a required resource (PDF, video, file) is not found."""
 
     pass

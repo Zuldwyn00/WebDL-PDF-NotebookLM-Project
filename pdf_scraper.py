@@ -77,7 +77,7 @@ from utils import (
     DownloadError,
     ProcessingError,
     ValidationError,
-    ResourceNotFoundError,
+    ResourceNotFound,
 )
 
 # ─── LOGGER & CONFIG ────────────────────────────────────────────────────────────────
@@ -152,117 +152,6 @@ def wait_for_page_ready(driver: webdriver.Chrome):
     return True
 
 
-def download_pdfs(saved_links: dict) -> dict:
-    """Downloads PDFs for all pending links and saves them to the dated directory.
-
-    Args:
-        saved_links (dict): Dictionary of categories containing URLs with their status and metadata.
-
-    Returns:
-        dict: Updated saved_links dictionary with new statuses.
-
-    Raises:
-        DownloadError: If PDF download or saving fails.
-        ProcessingError: If PDF processing fails.
-    """
-    driver = initialize_driver()
-
-    # Calculate total PDFs to download across all categories
-    total_pdfs = sum(
-        len([url for url, data in urls.items() if data["status"] not in {"SUCC"}])
-        for urls in saved_links.values()
-    )
-    processed_pdfs = 0
-
-    with tqdm(
-        total=total_pdfs, desc="Downloading PDFs", unit="pdf", position=0, leave=True
-    ) as pbar:
-        for category, urls in saved_links.items():
-            for link, data in urls.items():
-                if data["status"] not in {"SUCC"}:
-                    try:
-                        logger.info("Processing %s: %s", category, link)
-                        driver.get(link)
-                        wait_for_page_ready(driver)
-
-                        # Check if page has attachments and determine if it's a video
-                        try:
-                            # Find all video elements on the page
-                            video_elements = driver.find_elements(
-                                By.CSS_SELECTOR, "video source"
-                            )
-                            if video_elements:
-                                # Update type and add video URLs
-                                data["type"] = "mp4"
-                                data["video_urls"] = []
-                                for video_source in video_elements:
-                                    video_url = video_source.get_attribute("src")
-                                    if video_url:
-                                        logger.info("Found video in %s: %s", link, video_url)
-                                        data["video_urls"].append(video_url)
-
-                        except Exception as e:
-                            logger.debug(
-                                "No videos found on page, proceeding with PDF processing"
-                            )
-                            pass
-
-                        # Process PDF
-                        pdf = driver.execute_cdp_cmd(
-                            "Page.printToPDF",
-                            {
-                                "printBackground": True,
-                                "paperWidth": 8.27,
-                                "paperHeight": 11.7,
-                            },
-                        )
-                        pdf_bytes = base64.b64decode(pdf["data"])
-
-                        if len(pdf_bytes) <= 2 * 1024:
-                            raise DownloadError(f"PDF too small for {link}")
-
-                        parse = urlparse(link)
-                        name = (parse.netloc + parse.path).strip("/").replace("/", "_")
-                        finalname = name + ".pdf"
-
-                        try:
-                            with open(
-                                os.path.join(DATED_DOWNLOAD_DIR, finalname), "wb"
-                            ) as f:
-                                f.write(pdf_bytes)
-                            logger.info(
-                                "Saved as -> %s filesize: %s", finalname, len(pdf_bytes)
-                            )
-                            if not data["type"] == "mp4":  # if not mp4, then we can set status to SUCC
-                                data["status"] = "SUCC"
-                        except IOError as e:
-                            raise DownloadError(f"Failed to save PDF {finalname}: {e}")
-
-                    except TimeoutException as e:
-                        logger.error("Timeout downloading %s: %s", link, str(e))
-                        data["status"] = "FAIL"
-                    except DownloadError as e:
-                        logger.error("Download failed for %s: %s", link, str(e))
-                        data["status"] = "FAIL"
-                    except ProcessingError as e:
-                        logger.error("Video processing failed for %s: %s", link, str(e))
-                        data["status"] = "FAIL"
-                    except Exception as e:
-                        logger.exception(
-                            "Unexpected error downloading %s: %s", link, str(e)
-                        )
-                        data["status"] = "FAIL"
-                    finally:
-                        _save_urls(saved_links)
-
-                    processed_pdfs += 1
-                    pbar.update(1)
-                    pbar.set_postfix({"Processed": f"{processed_pdfs}/{total_pdfs}"})
-
-    _save_urls(saved_links)
-    return saved_links
-
-
 # ─── PDF MANIPULATION ───────────────────────────────────────────────────────────────
 def with_pdf(pdf_key_arg: str | int = "master_pdf_id"):
 
@@ -281,189 +170,9 @@ def with_pdf(pdf_key_arg: str | int = "master_pdf_id"):
             except:
                 pass
 
-        
-
-def _combine_categorize_pdfs() -> None:
-    """Combines all PDFs from the dated download directory into master PDFs by category.
-
-    This function:
-    1. Groups PDFs by category
-    2. Creates or updates master PDFs
-    3. Applies OCR if needed
-    4. Updates URL data with master PDF locations
-    5. Splits master PDFs if they exceed size limit
-
-    Raises:
-        ProcessingError: If PDF combination or categorization fails.
-        ResourceNotFoundError: If required directories or files are missing.
-    """
-    try:
-        logger.info("Starting PDF combination and categorization")
-
-        # ----------------------------------------------------------------------
-        # SETUP: Create directories and get PDF files
-        # ----------------------------------------------------------------------
-        # Ensure master folder exists
-        ensure_directories([MASTER_DIR])
-
-        # Get all PDFs from the DATED_DOWNLOAD_DIR
-        if not DATED_DOWNLOAD_DIR.exists():
-            raise FileNotFoundError(f"No PDF folder at {DATED_DOWNLOAD_DIR}")
-
-        pdf_files = sorted(DATED_DOWNLOAD_DIR.glob("*.pdf"))
-        if not pdf_files:
-            logger.exception(
-                "No PDF files in %s, skipping combination and categorization", DATED_DOWNLOAD_DIR
-            )
-            return
-
-        logger.info("Found %d PDF files to process", len(pdf_files))
-
-        # ----------------------------------------------------------------------
-        # MATCH: Match PDFs with URL data
-        # ----------------------------------------------------------------------
-        # Load URL data
-        pdf_dict = _load_urls()
-
-        # Match PDFs with URLs in pdf_dict
-        for pdf_path in pdf_files:
-            # Convert filename to URL format
-            url_key = "https://" + pdf_path.stem.replace("_", "/")
-            
-            # Find which category this URL belongs to
-            for category, urls in pdf_dict.items():
-                if url_key in urls:
-                    pdf_dict[category][url_key]["path"] = pdf_path
-                    break
-            else:
-                # Add to Unknown category using _add_url
-                _add_url(pdf_dict, "Unknown", url_key, status="SUCC", file_type="pdf")
-                pdf_dict["Unknown"][url_key]["path"] = pdf_path
-
-        # ----------------------------------------------------------------------
-        # PROCESS: Process each category and create master PDFs
-        # ----------------------------------------------------------------------
-        # Process each category
-        for category, urls in pdf_dict.items():
-            logger.info("Processing category: %s", category)
-
-            # Get PDFs for this category
-            category_pdfs = []
-            for url, data in urls.items():
-                if "path" in data:
-                    # Only include PDFs from the current date's directory
-                    if (
-                        isinstance(data["path"], Path)
-                        and DATED_DOWNLOAD_DIR in data["path"].parents
-                    ):
-                        category_pdfs.append(data["path"])
-
-            if not category_pdfs:
-                logger.info("No PDFs found for category: %s", category)
-                continue
-
-            logger.debug(
-                "Found %d PDFs for category: %s", len(category_pdfs), category
-            )
-
-            # ------------------------------------------------------------------
-            # Create or open master PDF for this category
-            # ------------------------------------------------------------------
-            # Check for existing master PDFs
-            existing_masters = list(MASTER_DIR.glob(f"{category}_*.pdf"))
-            current_index = get_highest_index(existing_masters, category) or 1
-
-            # Open or create master PDF
-            master_path = MASTER_DIR / f"{category}_{current_index}.pdf"
-            if master_path.exists():
-                master_doc = pymupdf.open(str(master_path))
-                incremental = True
-            else:
-                logger.debug("Creating new master PDF: %s", master_path)
-                master_doc = pymupdf.open()
-                master_doc.new_page()
-                incremental = False
-
-            try:
-                # --------------------------------------------------------------
-                # Add each PDF to the master document
-                # --------------------------------------------------------------
-                # Process each PDF in this category
-                for pdf_path in tqdm(
-                    category_pdfs,
-                    desc=f"Processing PDFs for {category}",
-                    unit="pdf",
-                    position=0,
-                    leave=True,
-                ):
-                    try:
-                        logger.debug("Processing %s", pdf_path.name)
-
-                        # Apply OCR as in the original code
-                        chunk = apply_ocr(pymupdf.open(str(pdf_path)))
-
-                        try:
-                            # Check size limit
-                            if (
-                                get_doc_size_bytes(master_doc)
-                                + get_doc_size_bytes(chunk)
-                                > MAX_MASTER_PDF_SIZE
-                            ):
-                                logger.debug(
-                                    "Size limit reached, creating new master PDF"
-                                )
-
-                                # Save current and create new master
-                                master_doc.save(
-                                    str(master_path),
-                                    incremental=incremental,
-                                    encryption=0,
-                                )
-                                master_doc.close()
-
-                                current_index += 1
-                                master_path = (
-                                    MASTER_DIR
-                                    / f"{category}_{current_index}.pdf"
-                                )
-                                master_doc = pymupdf.open()
-                                master_doc.new_page()
-                                incremental = False
-
-                            # Add PDF to master
-                            page_offset = master_doc.page_count
-                            master_doc.insert_pdf(chunk)
-
-                            # Record which pages in the master PDF this document occupies
-                            url_key = "https://" + pdf_path.stem.replace("_", "/")
-                            # Update the URL data in the correct category
-                            pdf_dict[category][url_key]["master_pdf"] = str(master_path)
-                            pdf_dict[category][url_key]["page_number"] = page_offset
-
-                        finally:
-                            chunk.close()
-                    except Exception as e:
-                        logger.error("Error processing %s: %s", pdf_path.name, e)
-
-                # Save final master PDF
-                logger.debug("Saving master PDF: %s", master_path)
-                master_doc.save(str(master_path), incremental=incremental, encryption=0)
-            finally:
-                master_doc.close()
-
-        # ----------------------------------------------------------------------
-        # FINALIZE: Save URL data and finish
-        # ----------------------------------------------------------------------
-        # Save updated URL data
-        _save_urls(pdf_dict)
-        logger.info("PDFs combined and categorized successfully")
-
-    except Exception as e:
-        logger.exception("Failed to combine and categorize PDFs: %s", str(e))
-        raise ProcessingError(f"PDF processing failed: {e}")
 
 
-def _process_transcripts() -> None:
+def _process_transcripts(self) -> None:
     """Processes video transcripts and combines them into master transcript PDFs.
 
     This function:
@@ -589,7 +298,7 @@ def delete_pdf(pdf_key: str, status: str = "PEND", delete_from_database: bool = 
 
     Raises:
         KeyError: If PDF key is not found in URL database.
-        ResourceNotFoundError: If master PDF is not found.
+        ResourceNotFound: If master PDF is not found.
         ProcessingError: If PDF deletion fails.
     """
     pdf_dict = _load_urls()
@@ -606,7 +315,7 @@ def delete_pdf(pdf_key: str, status: str = "PEND", delete_from_database: bool = 
     if not found_category:
         raise KeyError(f"PDF key '{pdf_key}' not found in URL database")
     if not found_data.get("master_pdf"):
-        raise ResourceNotFoundError(f"No master PDF associated with key '{pdf_key}'")
+        raise ResourceNotFound(f"No master PDF associated with key '{pdf_key}'")
 
     if found_data.get("master_pdf"):
         start_page = found_data["page_number"]
@@ -810,7 +519,7 @@ class Scraper:
         logger.info("Completed link discovery from %s", website_url)
         return True
 
-    def download_pdf(self, unprocessed_pdf_data: schemas.UnprocessedPDFResponse) -> schemas.UnprocessedPDFUpdate:
+    def download_pdf(self, unprocessed_pdf_data: schemas.UnprocessedPDFResponse) -> None:
         def _get_videos(driver: webdriver.Chrome) -> list:
             """Finds all video source URLs on the current page."""
             video_elements = driver.find_elements(By.CSS_SELECTOR, "video source")
@@ -864,11 +573,261 @@ class Scraper:
         update_unprocessed_pdf = schemas.UnprocessedPDFUpdate(**processed_pdf_data, video_links=video_urls)
         self.db.update_resource(update_unprocessed_pdf)
         
+    def _combine_categorize_pdfs(self) -> None:
+        """Combines all PDFs from the dated download directory into master PDFs by category.
+
+        This function:
+        1. Groups PDFs by category from database
+        2. Creates or updates master PDFs
+        3. Applies OCR if needed
+        4. Updates database with master PDF locations and page numbers
+        5. Splits master PDFs if they exceed size limit
+        6. Moves processed PDFs from UnprocessedPDF to PDF table
+
+        Raises:
+            ProcessingError: If PDF combination or categorization fails.
+            ResourceNotFound: If required directories or files are missing.
+        """
+        try:
+            logger.info("Starting PDF combination and categorization")
+
+            # ----------------------------------------------------------------------
+            # SETUP: Create directories and query database for downloaded PDFs
+            # ----------------------------------------------------------------------
+            ensure_directories([MASTER_DIR])
+
+            # Query unprocessed PDFs that have been downloaded (have file_path)
+            unprocessed_pdfs = (
+                self.db.session.query(UnprocessedPDF)
+                .filter(UnprocessedPDF.file_path.isnot(None))
+                .all()
+            )
+
+            if not unprocessed_pdfs:
+                logger.info("No downloaded PDFs to process, skipping combination and categorization")
+                return
+
+            logger.info("Found %d downloaded PDFs to process", len(unprocessed_pdfs))
+
+            # ----------------------------------------------------------------------
+            # GROUP: Group PDFs by category
+            # ----------------------------------------------------------------------
+            # Group PDFs by category
+            category_groups = {}
+            for unprocessed_pdf in unprocessed_pdfs:
+                category_name = unprocessed_pdf.category.name
+                if category_name not in category_groups:
+                    category_groups[category_name] = []
+                
+                # Build full file path
+                pdf_path = DATED_DOWNLOAD_DIR / unprocessed_pdf.file_path
+                if pdf_path.exists():
+                    category_groups[category_name].append({
+                        'unprocessed_pdf': unprocessed_pdf,
+                        'file_path': pdf_path
+                    })
+                else:
+                    logger.warning("PDF file not found: %s", pdf_path)
+
+            # ----------------------------------------------------------------------
+            # PROCESS: Process each category and create master PDFs
+            # ----------------------------------------------------------------------
+            for category_name, pdfs_data in category_groups.items():
+                logger.info("Processing category: %s", category_name)
+
+                if not pdfs_data:
+                    logger.info("No valid PDF files for category: %s", category_name)
+                    continue
+
+                logger.debug("Found %d PDFs for category: %s", len(pdfs_data), category_name)
+
+                # ------------------------------------------------------------------
+                # Create or get master PDF for this category
+                # ------------------------------------------------------------------
+                # Check for existing master PDFs in database
+                try:
+                    category_obj = self.db.get_category(category_name)
+                    existing_masters = (
+                        self.db.session.query(MasterPDF)
+                        .filter(MasterPDF.category_id == category_obj.id)
+                        .all()
+                    )
+                    
+                    # Find the latest master PDF or create new one
+                    if existing_masters:
+                        # Find the highest indexed master PDF
+                        master_files = [Path(m.file_path) for m in existing_masters]
+                        current_index = get_highest_index(master_files, category_name) or 1
+                        
+                        # Use the latest master PDF
+                        current_master = next(
+                            (m for m in existing_masters if str(current_index) in m.name),
+                            existing_masters[-1]  # fallback to last one
+                        )
+                        master_path = Path(current_master.file_path)
+                    else:
+                        current_index = 1
+                        master_path = MASTER_DIR / f"{category_name}_{current_index}.pdf"
+                        current_master = None
+
+                except ResourceNotFound:
+                    logger.error("Category '%s' not found in database", category_name)
+                    continue
+
+                # Open or create master PDF document
+                if master_path.exists() and current_master:
+                    master_doc = pymupdf.open(str(master_path))
+                    incremental = True
+                    master_pdf_db = current_master
+                else:
+                    logger.debug("Creating new master PDF: %s", master_path)
+                    master_doc = pymupdf.open()
+                    master_doc.new_page()
+                    incremental = False
+                    
+                    # Create master PDF in database
+                    master_create = schemas.MasterPDFCreate(
+                        name=f"{category_name}_{current_index}",
+                        file_path=master_path,
+                        category_value=category_name
+                    )
+                    self.db.add_masterpdf(master_create)
+                    self.db.session.commit()  # Commit to get the ID
+                    master_pdf_db = self.db.get_masterpdf(master_create.name)
+
+                try:
+                    # --------------------------------------------------------------
+                    # Add each PDF to the master document
+                    # --------------------------------------------------------------
+                    processed_pdfs = []  # Track successfully processed PDFs
+                    
+                    for pdf_data in tqdm(
+                        pdfs_data,
+                        desc=f"Processing PDFs for {category_name}",
+                        unit="pdf",
+                        position=0,
+                        leave=True,
+                    ):
+                        try:
+                            unprocessed_pdf = pdf_data['unprocessed_pdf']
+                            pdf_path = pdf_data['file_path']
+                            
+                            logger.debug("Processing %s", pdf_path.name)
+
+                            # Apply OCR
+                            chunk = apply_ocr(pymupdf.open(str(pdf_path)))
+
+                            try:
+                                # Check size limit
+                                if (
+                                    get_doc_size_bytes(master_doc)
+                                    + get_doc_size_bytes(chunk)
+                                    > MAX_MASTER_PDF_SIZE
+                                ):
+                                    logger.debug("Size limit reached, creating new master PDF")
+
+                                    # Save current master
+                                    master_doc.save(
+                                        str(master_path),
+                                        incremental=incremental,
+                                        encryption=0,
+                                    )
+                                    master_doc.close()
+
+                                    # Create new master PDF
+                                    current_index += 1
+                                    master_path = MASTER_DIR / f"{category_name}_{current_index}.pdf"
+                                    master_doc = pymupdf.open()
+                                    master_doc.new_page()
+                                    incremental = False
+
+                                    # Create new master PDF in database
+                                    master_create = schemas.MasterPDFCreate(
+                                        name=f"{category_name}_{current_index}",
+                                        file_path=master_path,
+                                        category_value=category_name
+                                    )
+                                    self.db.add_masterpdf(master_create)
+                                    self.db.session.commit()
+                                    master_pdf_db = self.db.get_masterpdf(master_create.name)
+
+                                # Add PDF to master
+                                page_offset = master_doc.page_count
+                                master_doc.insert_pdf(chunk)
+
+                                # Create PDF record in database
+                                pdf_create = schemas.PDFCreate(
+                                    url=unprocessed_pdf.url,
+                                    file_path=pdf_path,
+                                    master_pdf_value=master_pdf_db.name,
+                                    status="SUCC",
+                                    master_page_number=page_offset,
+                                    video_links=unprocessed_pdf.video_links
+                                )
+                                self.db.add_pdf(pdf_create)
+                                processed_pdfs.append(unprocessed_pdf)
+
+                            finally:
+                                chunk.close()
+
+                        except Exception as e:
+                            logger.error("Error processing %s: %s", pdf_path.name, e)
+                            # Mark as failed but continue processing other PDFs
+                            continue
+
+                    # Save final master PDF
+                    logger.debug("Saving master PDF: %s", master_path)
+                    master_doc.save(str(master_path), incremental=incremental, encryption=0)
+                    
+                    # --------------------------------------------------------------
+                    # CLEANUP: Remove processed PDFs from unprocessed table
+                    # --------------------------------------------------------------
+                    for unprocessed_pdf in processed_pdfs:
+                        self.db.session.delete(unprocessed_pdf)
+                    
+                    self.db.session.commit()
+                    logger.info("Successfully processed %d PDFs for category: %s", 
+                              len(processed_pdfs), category_name)
+
+                finally:
+                    master_doc.close()
+
+            logger.info("PDFs combined and categorized successfully")
+
+        except Exception as e:
+            logger.exception("Failed to combine and categorize PDFs: %s", str(e))
+            self.db.session.rollback()
+            raise ProcessingError(f"PDF processing failed: {e}")
+
     def assign_master(self, pdf: schemas.UnprocessedPDFResponse, master_value: str):
         pass
 
     def combine_into_masterpdf(self, pdf: schemas.UnprocessedPDFResponse):
         pass
+
+    def process_unprocessed_pdfs(self):
+        """Downloads all unprocessed PDFs that haven't been downloaded yet."""
+        unprocessed_pdfs = (
+            self.db.session.query(UnprocessedPDF)
+            .filter(UnprocessedPDF.file_path.is_(None))
+            .all()
+        )
+        
+        if not unprocessed_pdfs:
+            logger.info("No unprocessed PDFs to download")
+            return
+            
+        logger.info("Found %d unprocessed PDFs to download", len(unprocessed_pdfs))
+        
+        for unprocessed_pdf in tqdm(unprocessed_pdfs, desc="Downloading PDFs", unit="pdf"):
+            try:
+                # Convert to response schema for download_pdf method
+                unprocessed_response = schemas.UnprocessedPDFResponse.model_validate(unprocessed_pdf)
+                self.download_pdf(unprocessed_response)
+                logger.debug("Successfully downloaded %s", unprocessed_pdf.url)
+            except Exception as e:
+                logger.error("Failed to download %s: %s", unprocessed_pdf.url, e)
+                continue
 
     def run(self):
         """
@@ -876,53 +835,25 @@ class Scraper:
         This method will orchestrate the scraping process, including:
         1. Discovering new article links.
         2. Downloading new content as PDFs.
-        3. Further processing steps (TBD).
+        3. Combining PDFs into master files by category.
         """
         try:
             logger.info("Scraper run started.")
+            
+            # Step 1: Discover new links
             self.get_links(WEBSITE_LINK)
-            #TODO:
-            #process_all_links() or process_videos()? either way we need a method to process all our unprocessedPDFs, we can view which ones dont have a file_path yet which means they arent downloaded.
+            
+            # Step 2: Download unprocessed PDFs
+            self.process_unprocessed_pdfs()
+            
+            # Step 3: Combine downloaded PDFs into master files
+            self._combine_categorize_pdfs()
+            
         except Exception as e:
             logger.exception("An error occurred during the scraper run: %s", e)
         finally:
             self.close_driver()
             logger.info("Scraper run finished and resources cleaned up.")
-    
-
-def _normalize_url(raw_url: str) -> str:
-    """Normalizes a URL by standardizing format and removing unnecessary components.
-
-    Args:
-        raw_url (str): The URL to normalize.
-
-    Returns:
-        str: Normalized URL with:
-            - Scheme in lowercase
-            - Domain in lowercase
-            - Path is preserved as is
-            - No trailing slash
-            - No query parameters or fragments
-    """
-    # components of url, urlparse seperates into 6 fields
-    parts = urlparse(raw_url, scheme="http")
-    scheme = parts.scheme.lower()
-    netloc = parts.netloc.lower()
-    path = (parts.path or "")  # Safely handle None case
-    params = ""
-    query = ""
-    fragment = ""
-    if (
-        path.endswith("/") and len(path) > 1
-    ):  # remove ending (/), prevents duplicates if web developer is inconsistent with adding a (/) at the end of a link or not if it's the same link
-        path = path[:-1]
-
-    # scheme://netloc/path;params?query#fragment
-    normalized = urlunparse((scheme, netloc, path, params, query, fragment))
-    return normalized
-
-
-
 
 def main():
     """Entry point for the PDF scraper script.

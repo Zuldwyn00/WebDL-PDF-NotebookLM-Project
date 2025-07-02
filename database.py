@@ -11,6 +11,7 @@
 
 #4) Use a @validate_value decorator to make all commands go through it to validate their values are acceptable instead
 
+from importlib.resources import Resource
 from sqlalchemy import create_engine, ForeignKey, JSON
 from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
 from datetime import datetime
@@ -26,7 +27,7 @@ import schemas
 from utils import (ValidationError, 
                    load_config, 
                    setup_logger,
-                   ResourceNotFoundError,
+                   ResourceNotFound,
                    ValidationError,
 )
 
@@ -277,7 +278,7 @@ class DatabaseService:
         """Updates an existing category."""
         category_orm = self.session.query(Category).filter(Category.id == category_data.id).first()
         if not category_orm:
-            raise ResourceNotFoundError(f"Category with id {category_data.id} not found.")
+            raise ResourceNotFound(f"Category with id {category_data.id} not found.")
 
         if category_data.name is not None:
             category_orm.name = category_data.name
@@ -288,7 +289,7 @@ class DatabaseService:
         """Updates an existing MasterPDF."""
         masterpdf_orm = self.session.query(MasterPDF).filter(MasterPDF.id == masterpdf_data.id).first()
         if not masterpdf_orm:
-            raise ResourceNotFoundError(f"MasterPDF with id {masterpdf_data.id} not found.")
+            raise ResourceNotFound(f"MasterPDF with id {masterpdf_data.id} not found.")
 
         update_data = masterpdf_data.model_dump(exclude_unset=True)
         
@@ -306,7 +307,7 @@ class DatabaseService:
         """Updates an existing PDF."""
         pdf_orm = self.session.query(PDF).filter(PDF.id == pdf_data.id).first()
         if not pdf_orm:
-            raise ResourceNotFoundError(f"PDF with id {pdf_data.id} not found.")
+            raise ResourceNotFound(f"PDF with id {pdf_data.id} not found.")
 
         update_data = pdf_data.model_dump(exclude_unset=True)
 
@@ -327,7 +328,7 @@ class DatabaseService:
         """Updates an existing unprocessed PDF."""
         unprocessed_pdf_orm = self.session.query(UnprocessedPDF).filter(UnprocessedPDF.id == unprocessed_pdf_data.id).first()
         if not unprocessed_pdf_orm:
-            raise ResourceNotFoundError(f"UnprocessedPDF with id {unprocessed_pdf_data.id} not found.")
+            raise ResourceNotFound(f"UnprocessedPDF with id {unprocessed_pdf_data.id} not found.")
 
         # Exclude 'id' and 'category_value' from direct update
         update_data = unprocessed_pdf_data.model_dump(exclude_unset=True, exclude={'id', 'category_value', 'video_links'})
@@ -341,7 +342,7 @@ class DatabaseService:
             try:
                 category = self.get_category(unprocessed_pdf_data.category_value)
                 unprocessed_pdf_orm.category_id = category.id
-            except ResourceNotFoundError:
+            except ResourceNotFound:
                 logger.error(f"Category '{unprocessed_pdf_data.category_value}' not found, cannot update.")
                 return False
 
@@ -436,7 +437,7 @@ class DatabaseService:
             value (str | int): The ID (integer) or name (string) of the category to retrieve.
 
         Raises:
-            ResourceNotFoundError: If no category is found with the specified ID or name.
+            ResourceNotFound: If no category is found with the specified ID or name.
 
         Returns:
             schemas.CategoryResponse: A Pydantic model representing the retrieved category.
@@ -450,7 +451,7 @@ class DatabaseService:
         if category_orm:
             return schemas.CategoryResponse.model_validate(category_orm)
         else:
-            raise ResourceNotFoundError(f"Category '{value}' not found.")
+            raise ResourceNotFound(f"Category '{value}' not found.")
 
     def add_masterpdf(self, masterpdf_data: schemas.MasterPDFCreate) -> bool:
         """Adds a new master PDF to the database.
@@ -467,11 +468,11 @@ class DatabaseService:
             bool: True if the master PDF was added, False if it already exists.
 
         Raises:
-            ResourceNotFoundError: If the specified category does not exist.
+            ResourceNotFound: If the specified category does not exist.
         """
         try:
             category = self.get_category(masterpdf_data.category_value)
-        except ResourceNotFoundError: 
+        except ResourceNotFound: 
             logger.error(f"Category '{masterpdf_data.category_value}' not found, cannot add.")
             return False
 
@@ -481,7 +482,7 @@ class DatabaseService:
             if existing_master:
                 logger.info(f"Master PDF '{masterpdf_data.name}' already exists, cannot add.")
                 return False
-        except ResourceNotFoundError:
+        except ResourceNotFound:
             #this is expected behavior, so pass and proceed
             pass
         
@@ -501,7 +502,7 @@ class DatabaseService:
             value (str | int): The ID (integer) or name (string) of the master PDF to retrieve.
 
         Raises:
-            ResourceNotFoundError: If no master PDF is found with the specified ID or name.
+            ResourceNotFound: If no master PDF is found with the specified ID or name.
 
         Returns:
             schemas.MasterPDFResponse: A Pydantic model representing the retrieved master PDF.
@@ -516,7 +517,7 @@ class DatabaseService:
         if masterpdf_orm:
             return schemas.MasterPDFResponse.model_validate(masterpdf_orm)
         else:
-            raise ResourceNotFoundError(f"MasterPDF '{value}' not found.")
+            raise ResourceNotFound(f"MasterPDF '{value}' not found.")
 
     def add_pdf(self, pdf_data: schemas.PDFCreate) -> bool:
         """Adds a new PDF to the database, associated with a master PDF.
@@ -564,7 +565,7 @@ class DatabaseService:
             value (str | int): The ID (integer) or name (string) of the PDF to retrieve.
 
         Raises:
-            ResourceNotFoundError: If no PDF is found with the specified ID or name.
+            ResourceNotFound: If no PDF is found with the specified ID or name.
 
         Returns:
             schemas.PDFResponse: A Pydantic model representing the retrieved PDF.
@@ -581,12 +582,20 @@ class DatabaseService:
         if pdf_orm:
             return schemas.PDFResponse.model_validate(pdf_orm)
         else:
-            raise ResourceNotFoundError(f"PDF '{value}' not found.")
+            raise ResourceNotFound(f"PDF '{value}' not found.")
 
-    def add_unprocessed_pdf(self, data: schemas.UnprocessedPDFCreate) -> bool:
+    def add_unprocessed_pdf(self, pdf_data: schemas.UnprocessedPDFCreate) -> bool:
         """Adds a new unprocessed PDF to temporary storage."""
-        category = self.get_category(data.category_value)
-        normalized_url = normalize_url(data.url)
+        try:
+            if self.get_pdf(pdf_data.url):
+               raise ValidationError(f"PDF with URL '{pdf_data.url}' already exists in the PDF table and cannot be added as unprocessed.")
+        except ResourceNotFound:
+            #PDF doesn't exist in main table, expected behavior, proceed
+            pass
+        
+            
+        category = self.get_category(pdf_data.category_value)
+        normalized_url = normalize_url(pdf_data.url)
         
         existing = self.session.query(UnprocessedPDF).filter(UnprocessedPDF.url == normalized_url).first()
         if existing:
@@ -607,8 +616,8 @@ class DatabaseService:
             bool: True if the update was successful.
 
         Raises:
-            ResourceNotFoundError: If no PDF is found with the specified ID or URL.
-            ResourceNotFoundError: If no master PDF is found with the specified name.
+            ResourceNotFound: If no PDF is found with the specified ID or URL.
+            ResourceNotFound: If no master PDF is found with the specified name.
         """
         logger.debug("Attempting to update PDF master association:")
         
@@ -618,7 +627,7 @@ class DatabaseService:
         # Find the master PDF by name
         master_pdf = self.session.query(MasterPDF).filter(MasterPDF.name == master_name).first()
         if not master_pdf:
-            raise ResourceNotFoundError(f"Master PDF '{master_name}' not found.")
+            raise ResourceNotFound(f"Master PDF '{master_name}' not found.")
         
         # Get the actual PDF ORM object to update
         pdf_orm = self.session.query(PDF).filter(PDF.id == pdf_response.id).first()

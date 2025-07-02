@@ -5,7 +5,7 @@ from pydantic import ValidationError
 
 #local imports
 from pdf_scraper import _normalize_url, _add_url, delete_pdf, _load_urls
-from utils import ResourceNotFoundError
+from utils import ResourceNotFound
 import schemas
 from database import (
     init_db,
@@ -287,7 +287,7 @@ class TestRemovePDF:
         pdf_dict = _load_urls()
         input_key = "https://smartadvocate.na4.teamsupport.com/knowledgebase/21992632"
 
-        with pytest.raises(ResourceNotFoundError):
+        with pytest.raises(ResourceNotFound):
             delete_pdf(input_key)
 
 
