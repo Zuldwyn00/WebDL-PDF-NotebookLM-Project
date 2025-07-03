@@ -248,13 +248,13 @@ class DatabaseService:
         """Adds a new Category, MasterPDF, PDF, or UnprocessedPDF resource to the database."""
         try:
             if isinstance(object_data, schemas.CategoryCreate):
-                self.add_category(object_data)
+                self._add_category(object_data)
             elif isinstance(object_data, schemas.MasterPDFCreate):
-                self.add_masterpdf(object_data)
+                self._add_masterpdf(object_data)
             elif isinstance(object_data, schemas.PDFCreate):
-                self.add_pdf(object_data)
+                self._add_pdf(object_data)
             elif isinstance(object_data, schemas.UnprocessedPDFCreate):
-                self.add_unprocessed_pdf(object_data)
+                self._add_unprocessed_pdf(object_data)
 
         except Exception as e:
             logger.error("Problem adding %s to database: %s", type(object_data).__name__, e)
@@ -263,17 +263,17 @@ class DatabaseService:
         """Updates an existing Category, MasterPDF, PDF, or UnprocessedPDF resource in the database."""
         try:
             if isinstance(object_data, schemas.CategoryUpdate):
-                self.update_category(object_data)
+                self._update_category(object_data)
             elif isinstance(object_data, schemas.MasterPDFUpdate):
-                self.update_masterpdf(object_data)
+                self._update_masterpdf(object_data)
             elif isinstance(object_data, schemas.PDFUpdate):
-                self.update_pdf(object_data)
+                self._update_pdf(object_data)
             elif isinstance(object_data, schemas.UnprocessedPDFUpdate):
-                self.update_unprocessed_pdf(object_data)
+                self._update_unprocessed_pdf(object_data)
         except Exception as e:
             logger.error("Problem updating %s in database: %s", type(object_data).__name__, e)
 
-    def update_category(self, category_data: schemas.CategoryUpdate) -> bool:
+    def _update_category(self, category_data: schemas.CategoryUpdate) -> bool:
         """Updates an existing category."""
         category_orm = self.session.query(Category).filter(Category.id == category_data.id).first()
         if not category_orm:
@@ -284,7 +284,7 @@ class DatabaseService:
         
         return True
 
-    def update_masterpdf(self, masterpdf_data: schemas.MasterPDFUpdate) -> bool:
+    def _update_masterpdf(self, masterpdf_data: schemas.MasterPDFUpdate) -> bool:
         """Updates an existing MasterPDF."""
         masterpdf_orm = self.session.query(MasterPDF).filter(MasterPDF.id == masterpdf_data.id).first()
         if not masterpdf_orm:
@@ -293,7 +293,7 @@ class DatabaseService:
         update_data = masterpdf_data.model_dump(exclude_unset=True)
         
         if 'category_value' in update_data:
-            category = self.get_category(update_data['category_value'])
+            category = self._get_category(update_data['category_value'])
             masterpdf_orm.category_id = category.id
         
         for key, value in update_data.items():
@@ -302,7 +302,7 @@ class DatabaseService:
         
         return True
 
-    def update_pdf(self, pdf_data: schemas.PDFUpdate) -> bool:
+    def _update_pdf(self, pdf_data: schemas.PDFUpdate) -> bool:
         """Updates an existing PDF."""
         pdf_orm = self.session.query(PDF).filter(PDF.id == pdf_data.id).first()
         if not pdf_orm:
@@ -311,7 +311,7 @@ class DatabaseService:
         update_data = pdf_data.model_dump(exclude_unset=True)
 
         if 'master_pdf_value' in update_data:
-            master_pdf = self.get_masterpdf(update_data['master_pdf_value'])
+            master_pdf = self._get_masterpdf(update_data['master_pdf_value'])
             pdf_orm.master_id = master_pdf.id
         
         if 'url' in update_data:
@@ -323,7 +323,7 @@ class DatabaseService:
 
         return True
 
-    def update_unprocessed_pdf(self, unprocessed_pdf_data: schemas.UnprocessedPDFUpdate) -> bool:
+    def _update_unprocessed_pdf(self, unprocessed_pdf_data: schemas.UnprocessedPDFUpdate) -> bool:
         """Updates an existing unprocessed PDF."""
         unprocessed_pdf_orm = self.session.query(UnprocessedPDF).filter(UnprocessedPDF.id == unprocessed_pdf_data.id).first()
         if not unprocessed_pdf_orm:
@@ -339,7 +339,7 @@ class DatabaseService:
         # Handle category update separately
         if unprocessed_pdf_data.category_value is not None:
             try:
-                category = self.get_category(unprocessed_pdf_data.category_value)
+                category = self._get_category(unprocessed_pdf_data.category_value)
                 unprocessed_pdf_orm.category_id = category.id
             except ResourceNotFound:
                 logger.error(f"Category '{unprocessed_pdf_data.category_value}' not found, cannot update.")
@@ -373,7 +373,7 @@ class DatabaseService:
         """
         _validate_lookup_value(master_pdf_id)
 
-        master_pdf = self.get_masterpdf(master_pdf_id)
+        master_pdf = self._get_masterpdf(master_pdf_id)
         existing_pdfs = self.session.query(PDF).filter(PDF.master_id == master_pdf.id).order_by(PDF.master_page_number).all()
         if not existing_pdfs:
             return 0
@@ -403,7 +403,7 @@ class DatabaseService:
             
             return new_target_page
 
-    def add_category(self, category_data: schemas.CategoryCreate) -> bool:
+    def _add_category(self, category_data: schemas.CategoryCreate) -> bool:
         """Adds a new category to the database if it does not already exist.
 
         Args:
@@ -429,7 +429,7 @@ class DatabaseService:
 
         return True
 
-    def get_category(self, value: str | int) -> schemas.CategoryResponse:
+    def _get_category(self, value: str | int) -> schemas.CategoryResponse:
         """Retrieves a single category from the database by its ID or name.
 
         Args:
@@ -452,7 +452,7 @@ class DatabaseService:
         else:
             raise ResourceNotFound(f"Category '{value}' not found.")
 
-    def add_masterpdf(self, masterpdf_data: schemas.MasterPDFCreate) -> bool:
+    def _add_masterpdf(self, masterpdf_data: schemas.MasterPDFCreate) -> bool:
         """Adds a new master PDF to the database.
 
         Ensures the associated category exists and that the master PDF name is unique.
@@ -470,14 +470,14 @@ class DatabaseService:
             ResourceNotFound: If the specified category does not exist.
         """
         try:
-            category = self.get_category(masterpdf_data.category_value)
+            category = self._get_category(masterpdf_data.category_value)
         except ResourceNotFound: 
             logger.error(f"Category '{masterpdf_data.category_value}' not found, cannot add.")
             return False
 
 
         try:
-            existing_master = self.get_masterpdf(masterpdf_data.name)
+            existing_master = self._get_masterpdf(masterpdf_data.name)
             if existing_master:
                 logger.info(f"Master PDF '{masterpdf_data.name}' already exists, cannot add.")
                 return False
@@ -494,7 +494,7 @@ class DatabaseService:
 
         return True
 
-    def get_masterpdf(self, value: str | int) -> schemas.MasterPDFResponse:
+    def _get_masterpdf(self, value: str | int) -> schemas.MasterPDFResponse:
         """Retrieries a single master PDF from the database by its ID or name.
 
         Args:
@@ -518,7 +518,7 @@ class DatabaseService:
         else:
             raise ResourceNotFound(f"MasterPDF '{value}' not found.")
 
-    def add_pdf(self, pdf_data: schemas.PDFCreate) -> bool:
+    def _add_pdf(self, pdf_data: schemas.PDFCreate) -> bool:
         """Adds a new PDF to the database, associated with a master PDF.
 
         This method validates the master PDF, assigns a page number, normalizes the
@@ -539,7 +539,7 @@ class DatabaseService:
                   was not found.
         """
         
-        master_pdf = self.get_masterpdf(pdf_data.master_pdf_value)
+        master_pdf = self._get_masterpdf(pdf_data.master_pdf_value)
         if not master_pdf:
             logger.error(f"Master PDF '{pdf_data.master_pdf_value}' does not exist, cannot add PDF.")
             return False
@@ -557,7 +557,7 @@ class DatabaseService:
         self.session.add(new_pdf)
         return True
 
-    def get_pdf(self, value: str | int) -> schemas.PDFResponse:
+    def _get_pdf(self, value: str | int) -> schemas.PDFResponse:
         """Retrieves a single PDF from the database by its ID or name.
 
         Args:
@@ -583,16 +583,16 @@ class DatabaseService:
         else:
             raise ResourceNotFound(f"PDF '{value}' not found.")
 
-    def add_unprocessed_pdf(self, pdf_data: schemas.UnprocessedPDFCreate) -> bool:
+    def _add_unprocessed_pdf(self, pdf_data: schemas.UnprocessedPDFCreate) -> bool:
         """Adds a new unprocessed PDF to temporary storage."""
         try:
-            if self.get_pdf(pdf_data.url):
+            if self._get_pdf(pdf_data.url):
                raise ValidationError(f"PDF with URL '{pdf_data.url}' already exists in the PDF table and cannot be added as unprocessed.")
         except ResourceNotFound:
             #PDF doesn't exist in main table, expected behavior, proceed
             pass
         
-        category = self.get_category(pdf_data.category_value)
+        category = self._get_category(pdf_data.category_value)
         normalized_url = normalize_url(pdf_data.url)
         
         existing = self.session.query(UnprocessedPDF).filter(UnprocessedPDF.url == normalized_url).first()
@@ -603,7 +603,7 @@ class DatabaseService:
         self.session.add(new_unprocessed)
         return True
         
-    def update_pdf_master(self, pdf_to_update: str | int, master_name: str):
+    def _update_pdf_master(self, pdf_to_update: str | int, master_name: str):
         """Updates the master_pdf field for a specified PDF.
 
         Args:
@@ -619,8 +619,8 @@ class DatabaseService:
         """
         logger.debug("Attempting to update PDF master association:")
         
-        # Find the PDF to update using existing get_pdf method
-        pdf_response = self.get_pdf(pdf_to_update)
+        # Find the PDF to update using existing _get_pdf method
+        pdf_response = self._get_pdf(pdf_to_update)
         
         # Find the master PDF by name
         master_pdf = self.session.query(MasterPDF).filter(MasterPDF.name == master_name).first()

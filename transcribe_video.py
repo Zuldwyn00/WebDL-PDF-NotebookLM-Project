@@ -19,7 +19,6 @@ import json
 from utils import (
     setup_logger,
     load_config,
-    ensure_directories,
     get_doc_size_bytes,
     get_highest_index,
     ProcessingError,
@@ -40,8 +39,6 @@ MAX_MASTER_PDF_SIZE = (
 CHUNK_DURATION_MINUTES = config["transcript"]["chunk_duration_minutes"]
 WHISPER_MODEL = config["transcript"]["model"]
 
-# ─── DIRECTORY SETUP ────────────────────────────────────────────────────────────────
-ensure_directories([TRANSCRIPT_MASTER_DIR])
 
 
 def download_video(url, output_path):

@@ -14,7 +14,6 @@ directories:
 files:
   urls: "data/urls.json"  # Relative to script directory
   sensitive: "sensitive_config.yaml"  # File containing sensitive information
-  updated_categories: "updated_categories.txt"  # File to track updated categories
 
 # PDF Configuration
 pdf:

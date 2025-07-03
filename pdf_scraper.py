@@ -27,6 +27,7 @@ __version__ = "2.0"
 __date__ = "2025-05-23"
 
 # External imports
+from re import M
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -42,6 +43,7 @@ from functools import wraps
 from urllib.parse import urlparse
 import os, base64, io
 import pymupdf, ocrmypdf
+from sqlalchemy import func
 
 
 # Local imports
@@ -318,7 +320,7 @@ def delete_pdf(pdf_key: str, status: str = "PEND", delete_from_database: bool = 
     _save_urls(pdf_dict)
 
 #TODO: IMPLEMENT THIS METHOD TO WORK WITH DB
-def add_pdf(pdf_key: str) -> bool:
+def _add_pdf(pdf_key: str) -> bool:
     """Adds a PDF from database into a master, can specify where with target_page which will shift all pages over to allow room
     returns True if successful, false if failure, uses page assignment logic in database to assign proper page this just handles the actual editing of the main PDF
     file to add the pages of the new PDF"""
@@ -330,7 +332,9 @@ def add_pdf(pdf_key: str) -> bool:
 
     return False
 
-# ─── SAVING ─────────────────────────────────────────────────────────────────────────
+
+
+
 class Scraper:
     def __init__(self, db_service: DatabaseService, config: dict):
         self.db = db_service
@@ -433,7 +437,7 @@ class Scraper:
                             # Add new links as unprocessed PDFs
                             logger.debug("link found: %s, with category %s.", href, category_name)
                             unprocessed = schemas.UnprocessedPDFCreate(url=href, category_value=category_name)
-                            self.db.add_unprocessed_pdf(unprocessed)
+                            self.db._add_unprocessed_pdf(unprocessed)
 
                         except StaleElementReferenceException:
                             logger.debug("Stale article element, skipping...")
@@ -487,7 +491,7 @@ class Scraper:
             if video_urls:
                 main_doc = pymupdf.open(stream=io.BytesIO(pdf_bytes_ocr), filetype="pdf")
                 for video_url in video_urls:
-                    transcription_doc = transcribe_video(video_url, category=(self.db.get_category(unprocessed_pdf_data.category_id)).name)
+                    transcription_doc = transcribe_video(video_url, category=(self.db._get_category(unprocessed_pdf_data.category_id)).name)
                     if transcription_doc:
                         main_doc.insert_pdf(transcription_doc)
                         transcription_doc.close()
@@ -520,8 +524,8 @@ class Scraper:
                               'file_path': final_file_name,
                               'category_value': unprocessed_pdf_data.category_id,
                             }
-        update_unprocessed_pdf = schemas.UnprocessedPDFUpdate(**processed_pdf_data, video_links=video_urls)
-        self.db.update_resource(update_unprocessed_pdf)
+        _update_unprocessed_pdf = schemas.UnprocessedPDFUpdate(**processed_pdf_data, video_links=video_urls)
+        self.db.update_resource(_update_unprocessed_pdf)
         
     def _combine_categorize_pdfs(self) -> None:
         """Combines all PDFs from the dated download directory into master PDFs by category.
@@ -542,9 +546,8 @@ class Scraper:
             logger.info("Starting PDF combination and categorization")
 
             # ----------------------------------------------------------------------
-            # SETUP: Create directories and query database for downloaded PDFs
+            # SETUP: Query database for downloaded PDFs
             # ----------------------------------------------------------------------
-            ensure_directories([MASTER_DIR])
 
             # Query unprocessed PDFs that have been downloaded (have file_path)
             unprocessed_pdfs = (
@@ -596,7 +599,7 @@ class Scraper:
                 # ------------------------------------------------------------------
                 # Check for existing master PDFs in database
                 try:
-                    category_obj = self.db.get_category(category_name)
+                    category_obj = self.db._get_category(category_name)
                     existing_masters = (
                         self.db.session.query(MasterPDF)
                         .filter(MasterPDF.category_id == category_obj.id)
@@ -633,17 +636,18 @@ class Scraper:
                     logger.debug("Creating new master PDF: %s", master_path)
                     master_doc = pymupdf.open()
                     master_doc.new_page()
-                    incremental = False
+                    # Save the master PDF file first so it exists on disk
+                    master_doc.save(str(master_path), incremental=False, encryption=0)
                     
-                    # Create master PDF in database
+                    # Now create master PDF in database (file exists so FilePath validation will pass)
                     master_create = schemas.MasterPDFCreate(
                         name=f"{category_name}_{current_index}",
                         file_path=master_path,
                         category_value=category_name
                     )
-                    self.db.add_masterpdf(master_create)
+                    self.db.add_resource(master_create)
                     self.db.session.commit()  # Commit to get the ID
-                    master_pdf_db = self.db.get_masterpdf(master_create.name)
+                    master_pdf_db = self.db._get_masterpdf(master_create.name)
 
                 try:
                     # --------------------------------------------------------------
@@ -691,15 +695,18 @@ class Scraper:
                                     master_doc.new_page()
                                     incremental = False
 
+                                    # Save the master PDF file first so it exists on disk
+                                    master_doc.save(str(master_path), incremental=False, encryption=0)
+
                                     # Create new master PDF in database
                                     master_create = schemas.MasterPDFCreate(
                                         name=f"{category_name}_{current_index}",
                                         file_path=master_path,
                                         category_value=category_name
                                     )
-                                    self.db.add_masterpdf(master_create)
+                                    self.db.add_resource(master_create)
                                     self.db.session.commit()
-                                    master_pdf_db = self.db.get_masterpdf(master_create.name)
+                                    master_pdf_db = self.db._get_masterpdf(master_create.name)
 
                                 # Add PDF to master
                                 page_offset = master_doc.page_count
@@ -714,7 +721,7 @@ class Scraper:
                                     master_page_number=page_offset,
                                     video_links=unprocessed_pdf.video_links
                                 )
-                                self.db.add_pdf(pdf_create)
+                                self.db._add_pdf(pdf_create)
                                 processed_pdfs.append(unprocessed_pdf)
 
                             finally:
@@ -773,7 +780,6 @@ class Scraper:
                 logger.error("Failed to download %s: %s", unprocessed_pdf.url, e)
                 continue
 
-
     def run(self):
         """
         Main execution method for the scraper.
@@ -801,6 +807,21 @@ class Scraper:
             self.close_driver()
             logger.info("Scraper run finished and resources cleaned up.")
 
+class PDFManipulator:
+    def __init__(self, db_service: DatabaseService, config: dict):
+        self.db = db_service
+        self.config = config
+ 
+    def create_masterpdf(self, category_data = schemas.CategoryResponse):
+        def _get_highest_index(category)
+        highest_index = self.db.session.query(func.max(MasterPDF.id).filter(MasterPDF.category_id==category_data.id)).scalar() or 0
+        if highest_index == 0:
+            logger.debug("No existing masters, creating new master.")
+
+
+
+        
+
 def main():
     """Entry point for the PDF scraper script.
 
@@ -811,6 +832,8 @@ def main():
         with get_session() as session:
             db_service = DatabaseService(session=session)
             scraper = Scraper(db_service=db_service, config=config)
+            pdf_manipulator = PDFManipulator(db_service=db_service, config=config)
+
             scraper.run()
     except ScraperError as e:
         logger.error("A critical error occurred: %s", e)
