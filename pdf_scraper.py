@@ -45,7 +45,7 @@ import pymupdf, ocrmypdf
 
 
 # Local imports
-from transcribe_video import transcribe_video, combine_transcript
+from transcribe_video import transcribe_video
 from database import (
     get_session,
     Category,
