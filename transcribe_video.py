@@ -251,7 +251,8 @@ def transcribe_video(
             try:
                 # Create a new PDF document
                 doc = pymupdf.open()
-                page = doc.new_page()
+                # Set page dimensions to A4 (in points, 8.27 x 11.7 inches) to match scraper
+                page = doc.new_page(width=595.44, height=842.4)
 
                 # Add metadata to document
                 doc.set_metadata({"title": filename, "subject": "Video Transcript"})
