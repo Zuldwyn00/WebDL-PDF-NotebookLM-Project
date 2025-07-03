@@ -13,11 +13,6 @@ Date: 2025-05-23
 
 # TODO:
 
-# 1) Overhaul and refactor status indication, currently doesn't really work as it puts things as SUCC when they arent complete and puts things as PEND like mp4s if the mp4 hasnt
-# been processed but the PDF has been added to the master, so if it get run again before that completes it will double up the PDF in the master
-
-# 2) Potentially refactor to OOP, but not necessary here since code is not too complex, could at least refactor transcribe_video to be OOP to be a little cleaner
-
 # 3) Docker Containerization, but again not necessary here since this is in-house personal code.
 
 # 4) # Fix error where sometimes pages dont delete properly giving an invalid dict key mupdf error.
@@ -25,9 +20,7 @@ Date: 2025-05-23
 # 5) Clean up unneccesary try and except blocks to make code more readable, focus on if the error can be fixed, then use a try except block
 #    if the error cannot be fixed, raise an exception instead of doing a whole try except block
 
-# INPROGRESS:
 
-# 4) Could change to use a database instead of json file if we want to scale up.
 
 __author__ = "Zuldwyn00 <zuldwyn@gmail.com>"
 __version__ = "2.0"
