@@ -46,6 +46,7 @@ chromedriver.exe
 updated_categories.txt
 pdf_scraper.db
 pdf_scraper.db-journal
+wrapperexample.md
 
 # Logs
 *.log

@@ -27,6 +27,7 @@ __version__ = "2.0"
 __date__ = "2025-05-23"
 
 # External imports
+from contextlib import contextmanager
 from re import M
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -145,22 +146,6 @@ def wait_for_page_ready(driver: webdriver.Chrome):
 
 
 # ─── PDF MANIPULATION ───────────────────────────────────────────────────────────────
-def with_pdf(pdf_key_arg: str | int):
-
-    def decorator(func):
-        @wraps(func)
-        @with_session
-        def wrapper(*args, **kwargs):
-
-            pdf_key = kwargs.get(pdf_key_arg)
-            if pdf_key is None:
-                raise ValueError(f"'{pdf_key_arg}' must be provided as a keyword argument.")
-            
-            doc = None
-            try:
-               pdf_doc = None
-            except:
-                pass
 
 def apply_ocr(pdf_bytes: bytes) -> bytes:
     """OCR a PDF's bytes and return the OCRed version with searchable text.
@@ -324,15 +309,52 @@ def _add_pdf(pdf_key: str) -> bool:
     """Adds a PDF from database into a master, can specify where with target_page which will shift all pages over to allow room
     returns True if successful, false if failure, uses page assignment logic in database to assign proper page this just handles the actual editing of the main PDF
     file to add the pages of the new PDF"""
-    
-
-
-
 
 
     return False
 
 
+def with_pdf(func):
+    """Decorator to manage the lifecycle of a PyMuPDF document.
+    
+    This decorator simplifies PDF handling for functions that operate on
+    a PDF document. It ensures the document is opened and closed correctly,
+    and handles cases where a document might already be open or creates one if an existing one
+    is not given.
+
+    -Args: Accepts 'pdfdoc(pymupdf.Document)' and 'filepath(str)' kwargs. 
+
+    Does not handle saving of the document, that must be handled seperately.
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        pdfdoc = kwargs.get("pdfdoc")
+        filepath = kwargs.get("filepath")
+
+        if pdfdoc and isinstance(pdfdoc, pymupdf.Document):
+            if not pdfdoc.is_closed:
+                return func(*args, **kwargs)
+
+        filepath = kwargs.get("filepath")
+        managed_doc = None
+        try:
+            try:
+                managed_doc = pymupdf.open(filepath)
+            except (pymupdf.FileNotFoundError, TypeError, ValueError):
+                print("filepath has no existing PDF or is invalid, creating new one.")
+                managed_doc = pymupdf.open()  # create new blank PDF if none was given
+                managed_doc.new_page(width=595.44, height=842.4)
+
+            kwargs["pdfdoc"] = managed_doc
+            result = func(*args, **kwargs)
+            return result
+
+        except Exception as e:
+            print(f"Issue with PDF management for with_pdf(): {e}")
+        finally:
+            if managed_doc:
+                managed_doc.close()
+    return wrapper
 
 
 class Scraper:
@@ -811,12 +833,33 @@ class PDFManipulator:
     def __init__(self, db_service: DatabaseService, config: dict):
         self.db = db_service
         self.config = config
- 
-    def create_masterpdf(self, category_data = schemas.CategoryResponse):
-        def _get_highest_index(category)
-        highest_index = self.db.session.query(func.max(MasterPDF.id).filter(MasterPDF.category_id==category_data.id)).scalar() or 0
-        if highest_index == 0:
-            logger.debug("No existing masters, creating new master.")
+
+    @contextmanager
+    def pdf_context(self, file_path: str, pdf_doc: pymupdf.Document | str = None):
+        pass
+
+    def with_pdf(self, func):
+        pass
+
+    def create_pdf_doc(self, file_path: str) -> pymupdf.Document:
+        """Creates a new pymupdf Document object and returns it
+        """
+        pass
+
+
+
+    def create_masterpdf(self, category_data: schemas.CategoryResponse):
+        def _get_highest_index(category_data):
+            # either 0 if no masters exist in category, or returns the highest index master + 1
+            highest_index:int = self.db.session.query(func.max(MasterPDF.id).filter(MasterPDF.category_id==category_data.id)).scalar()+1 or 0
+            return highest_index
+
+        index = _get_highest_index(category_data)
+        if index != 0:
+            pass
+            #
+
+
 
 
 
