@@ -1,151 +1,57 @@
-# PDF and Video Content Scraper
+SmartAdvocate Data Extraction and Processing Tool
 
-A Python-based tool for scraping, processing, and organizing PDFs and video content from web sources. This tool is specifically designed to work with SmartAdvocate's knowledge base and integrates with Google's NotebookLM for summarizing, finding, and organizing information from the SmartAdvocate knowledge base.
+Overview
 
-## Features
+This application automates the extraction and organization of knowledgebase content from SmartAdvocate’s online resources. It retrieves web pages, documents, and videos, converts them into structured, searchable files, and prepares them for AI-assisted systems within the firm.
 
-- Automated Content Scraping: Automatically scrapes PDFs and videos from specified web pages
-- Smart Organization: Categorizes content based on their source categories
-- OCR Processing: Automatically applies OCR to PDFs with images
-- Master Document Creation: Combines related PDFs and video transcripts into master documents
-- Size Management: Automatically splits master documents when they exceed size limits
-- Video Transcription: Automatically transcribes video content using OpenAI's Whisper
-- Detailed Logging: Comprehensive logging of all operations with custom handlers
-- Progress Tracking: Visual progress bars for long-running operations
-- Configurable: Easy configuration through YAML files
+How It Works
 
-## Table of Contents
+    Data Collection
 
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Project Structure](#project-structure)
-- [Usage](#usage)
-- [Configuration](#configuration)
-- [Logging](#logging)
-- [Error Handling](#error-handling)
-- [Contributing](#contributing)
-- [License](#license)
-- [Contact](#contact)
-- [Version](#version)
+        The tool crawls SmartAdvocate’s internal knowledgebase and retrieves both page and document data.
 
-## Prerequisites
+        Each page is downloaded, cleaned, and categorized by topic.
 
-- Python 3.7+
-- Chrome browser
-- Internet connection
-- FFmpeg (for video processing)
-- Tesseract OCR (for PDF processing)
+        Large files are automatically split and organized into “master” PDFs, each within a set size limit to maintain readability and quick access.
 
-## Installation
+    Video Transcription
 
-1. Clone this repository:
-```bash
-git clone https://github.com/Zuldwyn00/NoteBookLM_Project
-cd NoteBookLM_Project
-```
+        Videos from the knowledgebase are transcribed and saved as searchable text documents.
 
-2. Install required Python packages:
-```bash
-pip install -r requirements.txt
-```
+        These transcripts are included in the same folder structure as related knowledgebase content for full coverage across media types.
 
-3. Install FFmpeg:
-   - Windows: Download from [FFmpeg website](https://ffmpeg.org/download.html)
-   - Linux: `sudo apt-get install ffmpeg`
-   - macOS: `brew install ffmpeg`
+    Categorization and File Management
 
-4. Install Tesseract OCR:
-   - Windows: Download and install from [Tesseract GitHub](https://github.com/UB-Mannheim/tesseract/wiki)
-   - Linux: `sudo apt-get install tesseract-ocr`
-   - macOS: `brew install tesseract`
+        Extracted files are grouped by subject and jurisdictional relevance.
 
-## Project Structures
+        The system tracks processed files in a JSON registry to prevent duplicates and support incremental updates.
 
-```
-PDFScraper/
-├── PDFs/
-│   ├── master/              # Combined master PDFs
-│   ├── transcript_master/   # Combined video transcripts
-│   └── YYYY-MM-DD/         # Current dated downloaded content
-├── config/
-│   ├── config.yaml         # Main configuration
-│   └── sensitive_config.yaml # Sensitive configuration
-├── logs/                   # Log files
-├── data/
-│   └── urls.json          # URL tracking database
-├── pdf_scraper.py         # Main PDF scraping script
-├── transcribe_video.py    # Video transcription module
-└── utils.py              # Utility functions
-```
+        File paths and categories are dynamically managed for reuse in downstream tools and applications.
 
-## Usage
+    Integration with Firm Systems
 
-1. Configure the application:
-   - Copy `config/config.yaml.example` to `config/config.yaml`
-   - Copy `config/sensitive_config.yaml.example` to `config/sensitive_config.yaml`
-   - Update the configuration files with your settings
+        Processed data serves as the foundation for internal AI tools such as the Legal Notebook and Lead Scoring system.
 
-2. Run the main script:
-```bash
-python pdf_scraper.py
-```
+        The export structure is consistent, making it easy to ingest the data into other AI or database-driven applications.
 
-The script performs the following operations:
-1. Scrapes all available content from the configured website using Selenium
-2. Downloads and processes each PDF and checks if pages contain videos
-3. Applies OCR to PDFs where necessary
-4. Transcribes video content using Whisper
-5. Combines content into master documents by category
-6. Generates detailed logs of the process
+Key Features
 
-## Configuration
+    Automated retrieval and categorization of SmartAdvocate knowledgebase data
 
-The application uses two YAML configuration files:
+    PDF merging system with automatic rollover for size limits
 
-### Main Configuration (`config/config.yaml`)
-- Website settings
-- Directory paths
-- PDF size limits
-- Transcription settings
-- Logging configuration
+    Video-to-text transcription and inclusion in unified datasets
 
-### Sensitive Configuration (`config/sensitive_config.yaml`)
-- User agent information
-- Contact details
-- Other sensitive settings
+    Duplicate prevention via tracked JSON registry
 
-## Logging
+    Configurable file paths and categories for flexible integration
 
-The application maintains detailed logs in the `logs` directory. Each run creates a new timestamped log file containing:
-- Operation details and timing
-- Error tracking and debugging information
-- Progress updates
-- File and console output
+    Designed to run independently or as a background process feeding other firm tools
 
-## Error Handling
+Usage
 
-The application implements comprehensive error handling for:
-- Download failures
-- PDF processing errors
-- OCR failures
-- Video processing errors
-- Transcription failures
-- File system operations
+Run the application via the included .bat file or directly from the main Python entry script. The tool automatically checks for new or updated pages and only processes unindexed content, minimizing bandwidth and runtime.
 
-## Contributing
+Notes
 
-This is a private project and is not accepting contributions at this time.
-
-## License
-
-[License information pending]
-
-## Contact
-
-Author: Zuldwyn00  
-Email: zuldwyn@gmail.com
-
-## Version
-
-Version: 2.1.0
-Last updated: 2025-05-30
+This project was developed for internal firm use to support automation and knowledgebase expansion. It focuses on reliability, transparency, and easy integration into existing workflows without altering SmartAdvocate’s native systems.
